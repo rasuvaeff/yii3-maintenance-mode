@@ -1,0 +1,131 @@
+# yii3-maintenance-mode
+
+## Install
+
+```bash
+composer require rasuvaeff/yii3-maintenance-mode
+```
+
+## Rules
+
+- PSR-15 `MiddlewareInterface`. Place **first** in the pipeline — before routing and auth.
+- Decision order: disabled → pass; IP in allowedIps → pass; valid bypass token → pass; → 503.
+- Bypass token: `hash_equals($storedHash, hash('sha256', $token))` — timing-safe.
+- Content negotiation: no `Accept` or `Accept: application/json` → JSON; otherwise → HTML.
+- Response: HTTP 503 + `Retry-After` header.
+- `FileMaintenanceProvider` re-reads file on every call — changes take effect without restart.
+- Missing or invalid JSON file → disabled state (safe default, no exception thrown).
+- Namespace: `Rasuvaeff\Yii3MaintenanceMode`.
+
+## API
+
+### MaintenanceState
+
+```php
+readonly class MaintenanceState {
+    public bool   $enabled         = false;
+    public int    $retryAfter      = 300;
+    /** @var list<string> */
+    public array  $allowedIps      = [];
+    public string $bypassTokenHash = '';   // sha256 hash, not plaintext
+}
+```
+
+### MaintenanceProvider (interface)
+
+```php
+interface MaintenanceProvider {
+    public function getState(): MaintenanceState;
+}
+```
+
+### ConfigMaintenanceProvider
+
+```php
+new ConfigMaintenanceProvider([
+    'enabled'         => true,
+    'retryAfter'      => 600,
+    'allowedIps'      => ['127.0.0.1'],
+    'bypassTokenHash' => hash('sha256', 'my-secret'),
+])
+```
+
+State is immutable. Best for config/env sources.
+
+### FileMaintenanceProvider
+
+```php
+new FileMaintenanceProvider(filePath: '/var/app/maintenance.json')
+```
+
+Enable:  `echo '{"enabled":true,"retryAfter":600}' > maintenance.json`
+Disable: `rm maintenance.json`
+
+```json
+{"enabled":true,"retryAfter":600,"allowedIps":["10.0.0.1"],"bypassTokenHash":"9f86d..."}
+```
+
+### MaintenanceMiddleware
+
+```php
+new MaintenanceMiddleware(provider: $provider, responseFactory: $responseFactory)
+```
+
+### Bypass token
+
+```bash
+php -r "echo hash('sha256', 'my-secret-token');"
+```
+
+Access: `https://example.com/any-path?bypass=my-secret-token`
+
+### Yii3 DI — ConfigMaintenanceProvider (default, via config-plugin)
+
+```php
+// config/params.php
+'rasuvaeff/yii3-maintenance-mode' => [
+    'enabled'         => (bool) ($_ENV['MAINTENANCE_ENABLED'] ?? false),
+    'retryAfter'      => 600,
+    'allowedIps'      => [],
+    'bypassTokenHash' => $_ENV['MAINTENANCE_BYPASS_HASH'] ?? '',
+],
+```
+
+### Yii3 DI — FileMaintenanceProvider (runtime toggle)
+
+```php
+// config/di.php
+use Rasuvaeff\Yii3MaintenanceMode\FileMaintenanceProvider;
+use Rasuvaeff\Yii3MaintenanceMode\MaintenanceProvider;
+
+return [
+    MaintenanceProvider::class => [
+        'class' => FileMaintenanceProvider::class,
+        '__construct()' => ['filePath' => dirname(__DIR__) . '/maintenance.json'],
+    ],
+    MaintenanceMiddleware::class => MaintenanceMiddleware::class,
+];
+```
+
+### Middleware pipeline placement
+
+```php
+// config/web.php — MaintenanceMiddleware must be first
+return [
+    MaintenanceMiddleware::class,
+    ErrorCatcher::class,
+    Router::class,
+];
+```
+
+### JSON response (503)
+
+```json
+{
+    "error": "Service Unavailable",
+    "message": "The server is currently undergoing maintenance.",
+    "retryAfter": 600
+}
+```
+
+Headers: `HTTP/1.1 503`, `Retry-After: 600`, `Content-Type: application/json`

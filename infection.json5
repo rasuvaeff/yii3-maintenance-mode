@@ -1,0 +1,20 @@
+{
+    "$schema": "vendor/infection/infection/resources/schema.json",
+    "source": {
+        "directories": ["src"]
+    },
+    "logs": {
+        "text": "php://stderr",
+        "summary": "build/infection-summary.log"
+    },
+    "phpUnit": {
+        "configDir": "."
+    },
+    "minMsi": 100,
+    "mutators": {
+        "@default": true,
+        "global-ignore": [
+            "Rasuvaeff\\Yii3MaintenanceMode\\FileMaintenanceProvider::getState"
+        ]
+    }
+}
