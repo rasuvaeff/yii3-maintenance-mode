@@ -6,6 +6,7 @@
 [![Static Analysis](https://img.shields.io/github/actions/workflow/status/rasuvaeff/yii3-maintenance-mode/static-analysis.yml?branch=master)](https://github.com/rasuvaeff/yii3-maintenance-mode/actions)
 [![Coverage](https://codecov.io/gh/rasuvaeff/yii3-maintenance-mode/branch/master/graph/badge.svg)](https://codecov.io/gh/rasuvaeff/yii3-maintenance-mode)
 [![Psalm Level](https://img.shields.io/badge/Psalm-1-blue.svg)](https://github.com/rasuvaeff/yii3-maintenance-mode/actions)
+[![PHP](https://img.shields.io/packagist/dependency-v/rasuvaeff/yii3-maintenance-mode/php)](https://packagist.org/packages/rasuvaeff/yii3-maintenance-mode)
 [![License](https://img.shields.io/packagist/l/rasuvaeff/yii3-maintenance-mode.svg)](LICENSE.md)
 
 Maintenance mode PSR-15 middleware for Yii3. Returns HTTP 503 with `Retry-After` header. Supports IP allow-list, bypass token, JSON and HTML responses.
