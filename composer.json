@@ -1,14 +1,14 @@
 {
     "name": "rasuvaeff/yii3-maintenance-mode",
     "description": "Maintenance mode middleware for Yii3 applications",
+    "license": "BSD-3-Clause",
+    "type": "library",
     "keywords": [
         "downtime",
         "maintenance",
         "middleware",
         "yii3"
     ],
-    "license": "BSD-3-Clause",
-    "type": "library",
     "authors": [
         {
             "name": "Victor Razuvaev",
