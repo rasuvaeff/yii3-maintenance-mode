@@ -240,7 +240,7 @@ See [`examples/`](examples/) for detailed Yii3 wiring: providers, pipeline place
 ```bash
 make install
 make build
-make cs:fix
+make cs-fix
 make mutation
 ```
 
