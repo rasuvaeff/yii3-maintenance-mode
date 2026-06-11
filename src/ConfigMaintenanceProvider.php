@@ -7,9 +7,9 @@ namespace Rasuvaeff\Yii3MaintenanceMode;
 /**
  * @api
  */
-final class ConfigMaintenanceProvider implements MaintenanceProvider
+final readonly class ConfigMaintenanceProvider implements MaintenanceProvider
 {
-    private readonly MaintenanceState $state;
+    private MaintenanceState $state;
 
     /**
      * @param array{enabled?: bool, retryAfter?: int, allowedIps?: list<string>, bypassTokenHash?: string} $config

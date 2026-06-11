@@ -13,11 +13,11 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * @api
  */
-final class MaintenanceMiddleware implements MiddlewareInterface
+final readonly class MaintenanceMiddleware implements MiddlewareInterface
 {
     public function __construct(
-        private readonly MaintenanceProvider $provider,
-        private readonly ResponseFactoryInterface $responseFactory,
+        private MaintenanceProvider $provider,
+        private ResponseFactoryInterface $responseFactory,
     ) {}
 
     #[\Override]

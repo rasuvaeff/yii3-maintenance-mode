@@ -7,10 +7,10 @@ namespace Rasuvaeff\Yii3MaintenanceMode;
 /**
  * @api
  */
-final class FileMaintenanceProvider implements MaintenanceProvider
+final readonly class FileMaintenanceProvider implements MaintenanceProvider
 {
     public function __construct(
-        private readonly string $filePath,
+        private string $filePath,
     ) {}
 
     #[\Override]
