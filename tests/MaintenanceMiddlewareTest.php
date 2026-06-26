@@ -4,26 +4,25 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3MaintenanceMode\Tests;
 
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Psr\Http\Server\MiddlewareInterface;
 use Rasuvaeff\Yii3MaintenanceMode\ConfigMaintenanceProvider;
 use Rasuvaeff\Yii3MaintenanceMode\MaintenanceMiddleware;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Data\DataProvider;
+use Testo\Test;
 
-#[CoversClass(MaintenanceMiddleware::class)]
-final class MaintenanceMiddlewareTest extends TestCase
+#[Test]
+#[Covers(MaintenanceMiddleware::class)]
+final class MaintenanceMiddlewareTest
 {
-    #[Test]
     public function implementsMiddlewareInterface(): void
     {
         $middleware = $this->createMiddleware(['enabled' => false]);
 
-        $this->assertInstanceOf(MiddlewareInterface::class, $middleware);
+        Assert::instanceOf($middleware, MiddlewareInterface::class);
     }
 
-    #[Test]
     public function passesThroughWhenDisabled(): void
     {
         $middleware = $this->createMiddleware(['enabled' => false]);
@@ -32,10 +31,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame(200, $response->getStatusCode());
+        Assert::same($response->getStatusCode(), 200);
     }
 
-    #[Test]
     public function returns503WhenEnabled(): void
     {
         $middleware = $this->createMiddleware(['enabled' => true]);
@@ -44,10 +42,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame(503, $response->getStatusCode());
+        Assert::same($response->getStatusCode(), 503);
     }
 
-    #[Test]
     public function setsRetryAfterHeader(): void
     {
         $middleware = $this->createMiddleware(['enabled' => true, 'retryAfter' => 600]);
@@ -56,10 +53,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame('600', $response->getHeaderLine('Retry-After'));
+        Assert::same($response->getHeaderLine('Retry-After'), '600');
     }
 
-    #[Test]
     public function returnsJsonByDefault(): void
     {
         $middleware = $this->createMiddleware(['enabled' => true]);
@@ -69,12 +65,11 @@ final class MaintenanceMiddlewareTest extends TestCase
         $response = $middleware->process($request, $handler);
         $body = $this->getResponseBody($response);
 
-        $this->assertSame('application/json', $response->getHeaderLine('Content-Type'));
-        $this->assertStringContainsString('Service Unavailable', $body);
-        $this->assertStringContainsString('retryAfter', $body);
+        Assert::same($response->getHeaderLine('Content-Type'), 'application/json');
+        Assert::string($body)->contains('Service Unavailable');
+        Assert::string($body)->contains('retryAfter');
     }
 
-    #[Test]
     public function returnsJsonWhenAcceptHeaderIsJson(): void
     {
         $middleware = $this->createMiddleware(['enabled' => true]);
@@ -83,10 +78,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame('application/json', $response->getHeaderLine('Content-Type'));
+        Assert::same($response->getHeaderLine('Content-Type'), 'application/json');
     }
 
-    #[Test]
     public function returnsHtmlWhenAcceptHeaderIsHtml(): void
     {
         $middleware = $this->createMiddleware(['enabled' => true]);
@@ -96,12 +90,11 @@ final class MaintenanceMiddlewareTest extends TestCase
         $response = $middleware->process($request, $handler);
         $body = $this->getResponseBody($response);
 
-        $this->assertSame('text/html; charset=utf-8', $response->getHeaderLine('Content-Type'));
-        $this->assertStringContainsString('<html', $body);
-        $this->assertStringContainsString('Maintenance', $body);
+        Assert::same($response->getHeaderLine('Content-Type'), 'text/html; charset=utf-8');
+        Assert::string($body)->contains('<html');
+        Assert::string($body)->contains('Maintenance');
     }
 
-    #[Test]
     public function allowsIpInAllowList(): void
     {
         $middleware = $this->createMiddleware([
@@ -113,10 +106,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame(200, $response->getStatusCode());
+        Assert::same($response->getStatusCode(), 200);
     }
 
-    #[Test]
     public function blocksIpNotInAllowList(): void
     {
         $middleware = $this->createMiddleware([
@@ -128,10 +120,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame(503, $response->getStatusCode());
+        Assert::same($response->getStatusCode(), 503);
     }
 
-    #[Test]
     public function allowsBypassToken(): void
     {
         $token = 'my-secret-token';
@@ -146,10 +137,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame(200, $response->getStatusCode());
+        Assert::same($response->getStatusCode(), 200);
     }
 
-    #[Test]
     public function blocksInvalidBypassToken(): void
     {
         $hash = hash('sha256', 'correct-token');
@@ -163,10 +153,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame(503, $response->getStatusCode());
+        Assert::same($response->getStatusCode(), 503);
     }
 
-    #[Test]
     public function blocksWhenBypassTokenHashIsEmpty(): void
     {
         $middleware = $this->createMiddleware([
@@ -178,10 +167,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame(503, $response->getStatusCode());
+        Assert::same($response->getStatusCode(), 503);
     }
 
-    #[Test]
     public function blocksWhenNoRemoteAddr(): void
     {
         $middleware = $this->createMiddleware([
@@ -193,10 +181,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame(503, $response->getStatusCode());
+        Assert::same($response->getStatusCode(), 503);
     }
 
-    #[Test]
     public function blocksWhenRemoteAddrIsNonString(): void
     {
         $middleware = $this->createMiddleware([
@@ -208,10 +195,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame(503, $response->getStatusCode());
+        Assert::same($response->getStatusCode(), 503);
     }
 
-    #[Test]
     public function blocksWhenRemoteAddrIsEmptyString(): void
     {
         $middleware = $this->createMiddleware([
@@ -223,10 +209,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame(503, $response->getStatusCode());
+        Assert::same($response->getStatusCode(), 503);
     }
 
-    #[Test]
     public function blocksWhenRemoteAddrIsArray(): void
     {
         $middleware = $this->createMiddleware([
@@ -238,10 +223,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame(503, $response->getStatusCode());
+        Assert::same($response->getStatusCode(), 503);
     }
 
-    #[Test]
     public function blocksWhenBypassParamIsNonString(): void
     {
         $hash = hash('sha256', 'correct-token');
@@ -254,10 +238,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame(503, $response->getStatusCode());
+        Assert::same($response->getStatusCode(), 503);
     }
 
-    #[Test]
     public function blocksWhenBypassParamIsEmpty(): void
     {
         $hash = hash('sha256', 'correct-token');
@@ -270,10 +253,9 @@ final class MaintenanceMiddlewareTest extends TestCase
 
         $response = $middleware->process($request, $handler);
 
-        $this->assertSame(503, $response->getStatusCode());
+        Assert::same($response->getStatusCode(), 503);
     }
 
-    #[Test]
     public function jsonResponseBodyContainsAllFields(): void
     {
         $middleware = $this->createMiddleware(['enabled' => true, 'retryAfter' => 600]);
@@ -285,11 +267,10 @@ final class MaintenanceMiddlewareTest extends TestCase
         /** @var array<string, mixed> $data */
         $data = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
 
-        $this->assertSame('Service Unavailable', $data['error']);
-        $this->assertSame(600, $data['retryAfter']);
+        Assert::same($data['error'], 'Service Unavailable');
+        Assert::same($data['retryAfter'], 600);
     }
 
-    #[Test]
     public function retryAfterHeaderIsString(): void
     {
         $middleware = $this->createMiddleware(['enabled' => true, 'retryAfter' => 300]);
@@ -299,7 +280,22 @@ final class MaintenanceMiddlewareTest extends TestCase
         $response = $middleware->process($request, $handler);
         $retryAfterHeaders = $response->getHeader('Retry-After');
 
-        $this->assertSame(['300'], $retryAfterHeaders);
+        Assert::same($retryAfterHeaders, ['300']);
+    }
+
+    /**
+     * @param array<string, list<string>> $headers
+     */
+    #[DataProvider('acceptHeaderProvider')]
+    public function contentNegotiation(array $headers, string $expectedContentType): void
+    {
+        $middleware = $this->createMiddleware(['enabled' => true]);
+        $request = new FakeRequest(headers: $headers);
+        $handler = new FakeHandler();
+
+        $response = $middleware->process($request, $handler);
+
+        Assert::same($response->getHeaderLine('Content-Type'), $expectedContentType);
     }
 
     /**
@@ -321,22 +317,6 @@ final class MaintenanceMiddlewareTest extends TestCase
                 'expectedContentType' => 'application/json',
             ],
         ];
-    }
-
-    /**
-     * @param array<string, list<string>> $headers
-     */
-    #[Test]
-    #[DataProvider('acceptHeaderProvider')]
-    public function contentNegotiation(array $headers, string $expectedContentType): void
-    {
-        $middleware = $this->createMiddleware(['enabled' => true]);
-        $request = new FakeRequest(headers: $headers);
-        $handler = new FakeHandler();
-
-        $response = $middleware->process($request, $handler);
-
-        $this->assertSame($expectedContentType, $response->getHeaderLine('Content-Type'));
     }
 
     /**

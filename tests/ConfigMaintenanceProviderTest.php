@@ -4,64 +4,70 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3MaintenanceMode\Tests;
 
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\Yii3MaintenanceMode\ConfigMaintenanceProvider;
 use Rasuvaeff\Yii3MaintenanceMode\MaintenanceProvider;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Data\DataProvider;
+use Testo\Test;
 
-#[CoversClass(ConfigMaintenanceProvider::class)]
-final class ConfigMaintenanceProviderTest extends TestCase
+#[Test]
+#[Covers(ConfigMaintenanceProvider::class)]
+final class ConfigMaintenanceProviderTest
 {
-    #[Test]
     public function defaultsToDisabled(): void
     {
         $provider = new ConfigMaintenanceProvider([]);
 
-        $state = $provider->getState();
-
-        $this->assertFalse($state->enabled);
+        Assert::false($provider->getState()->enabled);
     }
 
-    #[Test]
     public function returnsEnabledState(): void
     {
         $provider = new ConfigMaintenanceProvider(['enabled' => true]);
 
-        $this->assertTrue($provider->getState()->enabled);
+        Assert::true($provider->getState()->enabled);
     }
 
-    #[Test]
     public function returnsCustomRetryAfter(): void
     {
         $provider = new ConfigMaintenanceProvider(['retryAfter' => 600]);
 
-        $this->assertSame(600, $provider->getState()->retryAfter);
+        Assert::same($provider->getState()->retryAfter, 600);
     }
 
-    #[Test]
     public function returnsAllowedIps(): void
     {
         $provider = new ConfigMaintenanceProvider(['allowedIps' => ['10.0.0.1', '10.0.0.2']]);
 
-        $this->assertSame(['10.0.0.1', '10.0.0.2'], $provider->getState()->allowedIps);
+        Assert::same($provider->getState()->allowedIps, ['10.0.0.1', '10.0.0.2']);
     }
 
-    #[Test]
     public function returnsBypassTokenHash(): void
     {
         $provider = new ConfigMaintenanceProvider(['bypassTokenHash' => 'hash123']);
 
-        $this->assertSame('hash123', $provider->getState()->bypassTokenHash);
+        Assert::same($provider->getState()->bypassTokenHash, 'hash123');
     }
 
-    #[Test]
     public function implementsInterface(): void
     {
         $provider = new ConfigMaintenanceProvider();
 
-        $this->assertInstanceOf(MaintenanceProvider::class, $provider);
+        Assert::instanceOf($provider, MaintenanceProvider::class);
+    }
+
+    /**
+     * @param array{enabled?: bool, retryAfter?: int, allowedIps?: list<string>, bypassTokenHash?: string} $config
+     */
+    #[DataProvider('configProvider')]
+    public function respectsConfig(array $config, bool $expectedEnabled, int $expectedRetryAfter): void
+    {
+        $provider = new ConfigMaintenanceProvider($config);
+        $state = $provider->getState();
+
+        Assert::same($state->enabled, $expectedEnabled);
+        Assert::same($state->retryAfter, $expectedRetryAfter);
     }
 
     /**
@@ -86,19 +92,5 @@ final class ConfigMaintenanceProviderTest extends TestCase
                 'expectedRetryAfter' => 900,
             ],
         ];
-    }
-
-    /**
-     * @param array{enabled?: bool, retryAfter?: int, allowedIps?: list<string>, bypassTokenHash?: string} $config
-     */
-    #[Test]
-    #[DataProvider('configProvider')]
-    public function respectsConfig(array $config, bool $expectedEnabled, int $expectedRetryAfter): void
-    {
-        $provider = new ConfigMaintenanceProvider($config);
-        $state = $provider->getState();
-
-        $this->assertSame($expectedEnabled, $state->enabled);
-        $this->assertSame($expectedRetryAfter, $state->retryAfter);
     }
 }
