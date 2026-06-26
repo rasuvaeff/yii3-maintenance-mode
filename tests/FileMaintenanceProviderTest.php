@@ -4,45 +4,46 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3MaintenanceMode\Tests;
 
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\Yii3MaintenanceMode\FileMaintenanceProvider;
 use Rasuvaeff\Yii3MaintenanceMode\MaintenanceProvider;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Lifecycle\AfterTest;
+use Testo\Lifecycle\BeforeTest;
+use Testo\Test;
 
-#[CoversClass(FileMaintenanceProvider::class)]
-final class FileMaintenanceProviderTest extends TestCase
+#[Test]
+#[Covers(FileMaintenanceProvider::class)]
+final class FileMaintenanceProviderTest
 {
     private string $tmpFile;
 
-    #[\Override]
-    protected function setUp(): void
+    #[BeforeTest]
+    public function createTmpFile(): void
     {
         $this->tmpFile = sys_get_temp_dir() . '/maintenance_test_' . uniqid() . '.json';
     }
 
-    #[\Override]
-    protected function tearDown(): void
+    #[AfterTest]
+    public function removeTmpFile(): void
     {
         if (file_exists($this->tmpFile)) {
             unlink($this->tmpFile);
         }
     }
 
-    #[Test]
     public function returnsDisabledWhenFileNotExists(): void
     {
         $provider = new FileMaintenanceProvider('/nonexistent/file.json');
 
         $state = $provider->getState();
 
-        $this->assertFalse($state->enabled);
-        $this->assertSame(300, $state->retryAfter);
-        $this->assertSame([], $state->allowedIps);
-        $this->assertSame('', $state->bypassTokenHash);
+        Assert::false($state->enabled);
+        Assert::same($state->retryAfter, 300);
+        Assert::same($state->allowedIps, []);
+        Assert::same($state->bypassTokenHash, '');
     }
 
-    #[Test]
     public function readsEnabledStateFromFile(): void
     {
         file_put_contents($this->tmpFile, json_encode([
@@ -53,11 +54,10 @@ final class FileMaintenanceProviderTest extends TestCase
         $provider = new FileMaintenanceProvider($this->tmpFile);
         $state = $provider->getState();
 
-        $this->assertTrue($state->enabled);
-        $this->assertSame(600, $state->retryAfter);
+        Assert::true($state->enabled);
+        Assert::same($state->retryAfter, 600);
     }
 
-    #[Test]
     public function readsAllowedIpsFromFile(): void
     {
         file_put_contents($this->tmpFile, json_encode([
@@ -68,10 +68,9 @@ final class FileMaintenanceProviderTest extends TestCase
         $provider = new FileMaintenanceProvider($this->tmpFile);
         $state = $provider->getState();
 
-        $this->assertSame(['10.0.0.1', '10.0.0.2'], $state->allowedIps);
+        Assert::same($state->allowedIps, ['10.0.0.1', '10.0.0.2']);
     }
 
-    #[Test]
     public function readsBypassTokenHashFromFile(): void
     {
         file_put_contents($this->tmpFile, json_encode([
@@ -82,30 +81,27 @@ final class FileMaintenanceProviderTest extends TestCase
         $provider = new FileMaintenanceProvider($this->tmpFile);
         $state = $provider->getState();
 
-        $this->assertSame('somehash', $state->bypassTokenHash);
+        Assert::same($state->bypassTokenHash, 'somehash');
     }
 
-    #[Test]
     public function returnsDefaultWhenFileContainsInvalidJson(): void
     {
         file_put_contents($this->tmpFile, 'not json');
 
         $provider = new FileMaintenanceProvider($this->tmpFile);
 
-        $this->assertFalse($provider->getState()->enabled);
+        Assert::false($provider->getState()->enabled);
     }
 
-    #[Test]
     public function returnsDefaultWhenFileContainsNonArray(): void
     {
         file_put_contents($this->tmpFile, json_encode('string', JSON_THROW_ON_ERROR));
 
         $provider = new FileMaintenanceProvider($this->tmpFile);
 
-        $this->assertFalse($provider->getState()->enabled);
+        Assert::false($provider->getState()->enabled);
     }
 
-    #[Test]
     public function filtersNonStringIps(): void
     {
         file_put_contents($this->tmpFile, json_encode([
@@ -116,10 +112,9 @@ final class FileMaintenanceProviderTest extends TestCase
         $provider = new FileMaintenanceProvider($this->tmpFile);
         $state = $provider->getState();
 
-        $this->assertSame(['10.0.0.1', '10.0.0.2'], $state->allowedIps);
+        Assert::same($state->allowedIps, ['10.0.0.1', '10.0.0.2']);
     }
 
-    #[Test]
     public function defaultsEnabledToFalseWhenMissing(): void
     {
         file_put_contents($this->tmpFile, json_encode([
@@ -128,10 +123,9 @@ final class FileMaintenanceProviderTest extends TestCase
 
         $provider = new FileMaintenanceProvider($this->tmpFile);
 
-        $this->assertFalse($provider->getState()->enabled);
+        Assert::false($provider->getState()->enabled);
     }
 
-    #[Test]
     public function defaultsRetryAfterTo300WhenMissing(): void
     {
         file_put_contents($this->tmpFile, json_encode([
@@ -140,10 +134,9 @@ final class FileMaintenanceProviderTest extends TestCase
 
         $provider = new FileMaintenanceProvider($this->tmpFile);
 
-        $this->assertSame(300, $provider->getState()->retryAfter);
+        Assert::same($provider->getState()->retryAfter, 300);
     }
 
-    #[Test]
     public function castsEnabledToBool(): void
     {
         file_put_contents($this->tmpFile, json_encode([
@@ -152,10 +145,9 @@ final class FileMaintenanceProviderTest extends TestCase
 
         $provider = new FileMaintenanceProvider($this->tmpFile);
 
-        $this->assertTrue($provider->getState()->enabled);
+        Assert::true($provider->getState()->enabled);
     }
 
-    #[Test]
     public function castsRetryAfterToInt(): void
     {
         file_put_contents($this->tmpFile, json_encode([
@@ -164,10 +156,9 @@ final class FileMaintenanceProviderTest extends TestCase
 
         $provider = new FileMaintenanceProvider($this->tmpFile);
 
-        $this->assertSame(600, $provider->getState()->retryAfter);
+        Assert::same($provider->getState()->retryAfter, 600);
     }
 
-    #[Test]
     public function castsBypassTokenHashToString(): void
     {
         file_put_contents($this->tmpFile, json_encode([
@@ -176,10 +167,9 @@ final class FileMaintenanceProviderTest extends TestCase
 
         $provider = new FileMaintenanceProvider($this->tmpFile);
 
-        $this->assertSame('12345', $provider->getState()->bypassTokenHash);
+        Assert::same($provider->getState()->bypassTokenHash, '12345');
     }
 
-    #[Test]
     public function defaultsBypassTokenHashToEmptyStringWhenMissing(): void
     {
         file_put_contents($this->tmpFile, json_encode([
@@ -188,10 +178,9 @@ final class FileMaintenanceProviderTest extends TestCase
 
         $provider = new FileMaintenanceProvider($this->tmpFile);
 
-        $this->assertSame('', $provider->getState()->bypassTokenHash);
+        Assert::same($provider->getState()->bypassTokenHash, '');
     }
 
-    #[Test]
     public function defaultsAllowedIpsToEmptyArrayWhenMissing(): void
     {
         file_put_contents($this->tmpFile, json_encode([
@@ -200,14 +189,35 @@ final class FileMaintenanceProviderTest extends TestCase
 
         $provider = new FileMaintenanceProvider($this->tmpFile);
 
-        $this->assertSame([], $provider->getState()->allowedIps);
+        Assert::same($provider->getState()->allowedIps, []);
     }
 
-    #[Test]
     public function implementsInterface(): void
     {
         $provider = new FileMaintenanceProvider('/nonexistent');
 
-        $this->assertInstanceOf(MaintenanceProvider::class, $provider);
+        Assert::instanceOf($provider, MaintenanceProvider::class);
+    }
+
+    public function parsesJsonAtDepthLimit(): void
+    {
+        $json = '{"enabled":' . str_repeat('[', 510) . '1' . str_repeat(']', 510) . '}';
+
+        file_put_contents($this->tmpFile, $json);
+
+        $provider = new FileMaintenanceProvider($this->tmpFile);
+
+        Assert::true($provider->getState()->enabled);
+    }
+
+    public function rejectsJsonBeyondDepthLimit(): void
+    {
+        $json = '{"enabled":' . str_repeat('[', 511) . '1' . str_repeat(']', 511) . '}';
+
+        file_put_contents($this->tmpFile, $json);
+
+        $provider = new FileMaintenanceProvider($this->tmpFile);
+
+        Assert::false($provider->getState()->enabled);
     }
 }

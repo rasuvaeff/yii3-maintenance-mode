@@ -4,26 +4,25 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3MaintenanceMode\Tests;
 
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\Yii3MaintenanceMode\MaintenanceState;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Test;
 
-#[CoversClass(MaintenanceState::class)]
-final class MaintenanceStateTest extends TestCase
+#[Test]
+#[Covers(MaintenanceState::class)]
+final class MaintenanceStateTest
 {
-    #[Test]
     public function defaultsToDisabled(): void
     {
         $state = new MaintenanceState();
 
-        $this->assertFalse($state->enabled);
-        $this->assertSame(300, $state->retryAfter);
-        $this->assertSame([], $state->allowedIps);
-        $this->assertSame('', $state->bypassTokenHash);
+        Assert::false($state->enabled);
+        Assert::same($state->retryAfter, 300);
+        Assert::same($state->allowedIps, []);
+        Assert::same($state->bypassTokenHash, '');
     }
 
-    #[Test]
     public function acceptsCustomValues(): void
     {
         $state = new MaintenanceState(
@@ -33,9 +32,9 @@ final class MaintenanceStateTest extends TestCase
             bypassTokenHash: 'abc123',
         );
 
-        $this->assertTrue($state->enabled);
-        $this->assertSame(600, $state->retryAfter);
-        $this->assertSame(['127.0.0.1'], $state->allowedIps);
-        $this->assertSame('abc123', $state->bypassTokenHash);
+        Assert::true($state->enabled);
+        Assert::same($state->retryAfter, 600);
+        Assert::same($state->allowedIps, ['127.0.0.1']);
+        Assert::same($state->bypassTokenHash, 'abc123');
     }
 }

@@ -7,7 +7,7 @@
 /CLAUDE.md export-ignore
 /examples export-ignore
 /infection.json5 export-ignore
-/phpunit.xml.dist export-ignore
 /psalm.xml export-ignore
 /rector.php export-ignore
+/testo.php export-ignore
 /tests export-ignore
