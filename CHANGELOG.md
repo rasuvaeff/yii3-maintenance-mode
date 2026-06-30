@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3 — 2026-06-30
+
+- Add `/benchmarks` and `/Makefile` to `.gitattributes` export-ignore.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
