@@ -7,6 +7,7 @@
 [![Psalm Level](https://img.shields.io/badge/Psalm-1-blue.svg)](https://github.com/rasuvaeff/yii3-maintenance-mode/actions)
 [![PHP](https://img.shields.io/packagist/dependency-v/rasuvaeff/yii3-maintenance-mode/php)](https://packagist.org/packages/rasuvaeff/yii3-maintenance-mode)
 [![License](https://img.shields.io/packagist/l/rasuvaeff/yii3-maintenance-mode.svg)](LICENSE.md)
+[Русская версия](README.ru.md)
 
 Maintenance mode PSR-15 middleware for Yii3. Returns HTTP 503 with `Retry-After` header. Supports IP allow-list, bypass token, JSON and HTML responses.
 
