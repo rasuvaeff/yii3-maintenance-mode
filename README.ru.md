@@ -9,19 +9,21 @@
 [![License](https://img.shields.io/packagist/l/rasuvaeff/yii3-maintenance-mode.svg)](LICENSE.md)
 [English version](README.md)
 
-PSR-15 middleware режима maintenance для Yii3. Возвращает HTTP 503 с заголовком
-`Retry-After`. Поддерживает IP allow-list, bypass-токен, JSON- и HTML-ответы.
+Ориентированный на production PSR-15 middleware режима maintenance для Yii3.
+Он возвращает HTTP 503 с `Retry-After`, поддерживает безопасный bypass через
+header, исключения для health endpoints, IPv4/IPv6 CIDR allow-list, trusted
+proxies, атомарное переключение через файл и кастомные ответы.
 
-> Используете AI-ассистента для написания кода? В [llms.txt](llms.txt) — компактный
-> API-справочник, готовый для вставки в контекст.
+> Используете AI-ассистента? В [llms.txt](llms.txt) находится компактный
+> API-справочник, готовый для добавления в контекст.
 
 ## Требования
 
-- PHP 8.3 – 8.5
-- `psr/http-message` ^2.0
-- `psr/http-server-middleware` ^1.0
-- `psr/http-server-handler` ^1.0
-- `psr/http-factory` ^1.0 и реализация PSR-17 — `MaintenanceMiddleware` принимает `ResponseFactoryInterface`
+- PHP 8.3-8.5
+- ext-filter
+- PSR-7 HTTP messages и PSR-17 response factory
+- PSR-15 middleware и request handler
+- Yii config-plugin в root-приложении для автоматической Yii3 DI-регистрации
 
 ## Установка
 
@@ -31,49 +33,53 @@ composer require rasuvaeff/yii3-maintenance-mode
 
 ## Использование
 
-### 1. Добавьте middleware в pipeline
+### Порядок middleware
 
-`MaintenanceMiddleware` должен выполняться **до routing'а и аутентификации** —
-иначе запросы дойдут до router'а даже во время maintenance. При этом он **не
-должен** быть самым внешним middleware: глобальный error catcher, request ID и
-observability-middleware обязаны оборачивать его, иначе ошибка, возникшая при
-выдаче maintenance-ответа, вернётся без них.
+Размещайте maintenance mode до routing и authentication, но внутри глобальных
+error handling, request ID, observability, CORS и security middleware. Так
+ответы 503 остаются наблюдаемыми, а ошибки middleware перехватываются.
 
 ```php
-// config/web.php or wherever your middleware stack is defined
-use Rasuvaeff\Yii3MaintenanceMode\MaintenanceMiddleware;
-
 return [
-    ErrorCatcher::class,            // ← outermost: wraps everything below
-    // request ID, logging and tracing, security headers …
-    MaintenanceMiddleware::class,   // ← before routing and auth
+    ErrorCatcher::class,
+    RequestIdMiddleware::class,
+    SecurityHeadersMiddleware::class,
+    MaintenanceMiddleware::class,
     Router::class,
-    // ...
+    Authentication::class,
 ];
 ```
 
-В стеке middleware Yii3 первый элемент — самый внешний: всё, что перечислено
-выше `MaintenanceMiddleware`, оборачивает его, а всё, что ниже, во время
-maintenance не выполняется.
+### Config provider
 
-### 2. Сконфигурируйте в params.php
+Пакет регистрирует `ConfigMaintenanceProvider` и `MaintenanceMiddleware` через
+Yii config-plugin.
 
 ```php
 // config/params.php
+$enabled = filter_var(
+    $_ENV['MAINTENANCE_ENABLED'] ?? 'false',
+    FILTER_VALIDATE_BOOL,
+    FILTER_NULL_ON_FAILURE,
+) ?? false;
+
 return [
     'rasuvaeff/yii3-maintenance-mode' => [
-        'enabled'         => false,
-        'retryAfter'      => 300,
-        'allowedIps'      => [],
-        'bypassTokenHash' => '',
+        'enabled' => $enabled,
+        'retryAfter' => 300,
+        'allowedIps' => [],
+        'bypassTokenHash' => $_ENV['MAINTENANCE_BYPASS_HASH'] ?? '',
     ],
 ];
 ```
 
-Пакет поставляет `config/di.php` и `config/params.php`. Они подключаются
-автоматически **только если корневое приложение использует config-plugin
-`yiisoft/config`** — так устроены `yiisoft/app` и `yiisoft/app-api`. Без плагина
-не регистрируется ничего, сервисы нужно связать вручную:
+`ConfigMaintenanceProvider` сохраняет immutable state при создании container.
+Если state должен меняться без пересборки container, используйте
+`FileMaintenanceProvider`.
+
+`config/di.php` и `config/params.php` подключаются автоматически **только
+если root-приложение использует плагин `yiisoft/config`** (`yiisoft/app`,
+`yiisoft/app-api`). Без него сервисы нужно связать руками:
 
 ```php
 use Psr\Http\Message\ResponseFactoryInterface;
@@ -86,29 +92,20 @@ $middleware = new MaintenanceMiddleware(
 );
 ```
 
-### 3. Включение режима maintenance
+### Атомарное переключение через файл
 
-**Через переменную окружения** (без deploy):
+Используйте установленную команду вместо shell redirection или удаления файла.
+Она записывает полный временный файл и атомарно переименовывает его.
 
-```php
-// config/params.php
-'rasuvaeff/yii3-maintenance-mode' => [
-    'enabled'         => filter_var($_ENV['MAINTENANCE_ENABLED'] ?? false, FILTER_VALIDATE_BOOL),
-    'retryAfter'      => 600,
-    'allowedIps'      => ['10.0.0.1'],
-    'bypassTokenHash' => (string) ($_ENV['MAINTENANCE_BYPASS_HASH'] ?? ''),
-],
+```bash
+vendor/bin/yii3-maintenance enable --file=/var/app/maintenance.json --retry-after=600
+vendor/bin/yii3-maintenance status --file=/var/app/maintenance.json
+vendor/bin/yii3-maintenance disable --file=/var/app/maintenance.json
 ```
 
-Разбирайте флаг через `filter_var(..., FILTER_VALIDATE_BOOL)`, а не приведением
-`(bool)`: переменные окружения — строки, а `(bool) 'false'`, `(bool) '0.0'` и
-`(bool) 'off'` равны `true`, то есть приведение превращает «maintenance
-выключен» во «включён».
-
-**Через JSON-файл** (переключение без deploy или restart):
+Привяжите file provider в DI приложения:
 
 ```php
-// config/di.php — switch to FileMaintenanceProvider
 use Rasuvaeff\Yii3MaintenanceMode\FileMaintenanceProvider;
 use Rasuvaeff\Yii3MaintenanceMode\MaintenanceProvider;
 
@@ -116,217 +113,142 @@ return [
     MaintenanceProvider::class => [
         'class' => FileMaintenanceProvider::class,
         '__construct()' => [
-            'filePath' => dirname(__DIR__) . '/maintenance.json',
+            'filePath' => '/var/app/maintenance.json',
         ],
     ],
 ];
 ```
 
-Файл перечитывается на каждый запрос, поэтому его нельзя увидеть записанным
-наполовину. Пишите временный файл **в том же каталоге** и перемещайте его на
-место: `rename()` в пределах одной файловой системы атомарен, а обычный
-`echo > maintenance.json` — нет.
-
-```bash
-dir=/var/www/app
-
-# enable
-tmp="$(mktemp "$dir/maintenance.json.XXXXXX")"
-printf '%s' '{"enabled":true,"retryAfter":600}' > "$tmp"
-chmod 0644 "$tmp"
-mv -f "$tmp" "$dir/maintenance.json"
-
-# disable
-tmp="$(mktemp "$dir/maintenance.json.XXXXXX")"
-printf '%s' '{"enabled":false}' > "$tmp"
-chmod 0644 "$tmp"
-mv -f "$tmp" "$dir/maintenance.json"
-```
-
-Удаление файла тоже выключает maintenance: отсутствующий файл читается как
-состояние по умолчанию (выключено). Явный `{"enabled":false}` лучше — он
-отличает «выключили осознанно» от «файл пропал».
+`FileMaintenanceProvider` принимает строгие JSON-типы. Отсутствующий,
+недоступный, поврежденный или не соответствующий схеме файл пока возвращает
+disabled state. Это legacy fail-open policy; используйте atomic writer и
+мониторинг ошибок файла вместо частичных ручных записей.
 
 ## Bypass-токен
 
-Сгенерируйте длинный случайный токен и храните только его hash:
+Сгенерируйте высокоэнтропийный токен и его SHA-256 hash:
 
 ```bash
-php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"          # сам токен
-php -r "echo hash('sha256', 'my-secret-token'), PHP_EOL;"  # то, что идёт в конфиг
-# ea5add57437cbf20af59034d7ed17968dcc56767b41965fcc5b376d45db8b4a3
+php -r '$token = bin2hex(random_bytes(32)); echo "token=$token\nhash=" . hash("sha256", $token) . "\n";'
 ```
 
-Храните hash в конфиге (никогда сам токен):
+Для буквального токена `my-secret-token` правильный hash:
+
+```text
+ea5add57437cbf20af59034d7ed17968dcc56767b41965fcc5b376d45db8b4a3
+```
+
+Храните только hash, а plaintext-токен передавайте по TLS в header:
+
+```bash
+curl -H 'X-Maintenance-Bypass: <plaintext-token>' https://example.com/admin
+```
+
+Сравнение использует `hash_equals()`. Оно защищает от timing attacks, но не от
+brute force слабого токена. Legacy query-параметр `?bypass=` пока включен для
+обратной совместимости, однако URL может попасть в логи, историю браузера,
+аналитику и referrers. В новых deployments отключайте его.
 
 ```php
-'bypassTokenHash' => 'ea5add57437cbf20af59034d7ed17968dcc56767b41965fcc5b376d45db8b4a3',
+use Rasuvaeff\Yii3MaintenanceMode\DefaultMaintenanceAccessPolicy;
+
+$policy = new DefaultMaintenanceAccessPolicy(
+    allowQueryParameter: false,
+);
 ```
 
-Доступ к любому URL с добавлением `?bypass=my-secret-token`:
+## Health paths, CIDR и proxies
 
-```
-https://example.com/?bypass=my-secret-token
-https://example.com/admin/dashboard?bypass=my-secret-token
-```
-
-Токен сравнивается через `hash_equals()` — это убирает timing-канал утечки, но
-не защищает от перебора: используйте минимум 32 случайных байта и включайте
-rate-limit на веб-сервере, если maintenance-страница доступна публично.
-
-**Query-параметр передаётся внутри URL.** Он попадает в access-логи веб-сервера,
-логи приложения, заголовок `Referer` исходящих ссылок, историю браузера и на
-каждый промежуточный proxy. Отдавайте сайт по TLS, считайте токен
-скомпрометированным после использования на чужой машине и меняйте его после
-maintenance-окна. Передачи токена через заголовок в 1.0.x нет.
-
-## Справочник API
-
-### `MaintenanceState`
+`allowedIps` принимает точные IPv4/IPv6 адреса и CIDR rules. Default IP resolver
+принимает только валидный `REMOTE_ADDR`.
 
 ```php
-readonly class MaintenanceState {
-    public bool   $enabled         = false;
-    public int    $retryAfter      = 300;   // seconds
-    /** @var list<string> */
-    public array  $allowedIps      = [];
-    public string $bypassTokenHash = '';    // sha256 of bypass token
-}
+$state = new MaintenanceState(
+    enabled: true,
+    allowedIps: ['10.0.0.0/8', '2001:db8::/32'],
+);
 ```
 
-### `MaintenanceProvider` (интерфейс)
+Исключите health endpoints и разрешайте forwarded client addresses только от
+явно доверенных proxies:
 
 ```php
-interface MaintenanceProvider {
-    public function getState(): MaintenanceState;
-}
+use Rasuvaeff\Yii3MaintenanceMode\DefaultMaintenanceAccessPolicy;
+use Rasuvaeff\Yii3MaintenanceMode\TrustedProxyClientIpResolver;
+
+$policy = new DefaultMaintenanceAccessPolicy(
+    clientIpResolver: new TrustedProxyClientIpResolver(
+        trustedProxies: ['10.0.0.0/8'],
+    ),
+    excludedPathPrefixes: ['/health', '/ready', '/metrics'],
+    allowQueryParameter: false,
+);
 ```
 
-Реализуйте его для создания кастомных провайдеров (БД, Redis, feature-flag
-и т. д.). Провайдер отдаёт только состояние — на тело ответа он не влияет.
+Никогда не доверяйте `X-Forwarded-For` без trusted-proxy allow-list.
 
-### `ConfigMaintenanceProvider`
+## Кастомный ответ
 
-```php
-$provider = new ConfigMaintenanceProvider([
-    'enabled'         => true,
-    'retryAfter'      => 600,
-    'allowedIps'      => ['127.0.0.1', '10.0.0.1'],
-    'bypassTokenHash' => hash('sha256', 'secret'),
-]);
-```
-
-State иммутабелен — задаётся один раз при конструировании. Лучше всего подходит
-для config/env-источников.
-
-### `FileMaintenanceProvider`
-
-```php
-$provider = new FileMaintenanceProvider(filePath: '/var/app/maintenance.json');
-```
-
-Читает state на каждый вызов `getState()` — изменения применяются без restart'а.
-
-Формат `maintenance.json`:
-
-```json
-{
-    "enabled": true,
-    "retryAfter": 600,
-    "allowedIps": ["10.0.0.1"],
-    "bypassTokenHash": "ea5add57437cbf20af59034d7ed17968dcc56767b41965fcc5b376d45db8b4a3"
-}
-```
-
-**Поведение при ошибке — fail-open.** Отсутствующий файл, нечитаемый файл и
-невалидный JSON дают состояние по умолчанию (`enabled: false`), то есть трафик
-продолжает идти. Это удобно (потерянный файл не заблокирует сайт) и опасно
-(опечатка в deploy-скрипте молча отменяет maintenance-окно). Значения
-приводятся, а не валидируются: `"retryAfter": "soon"` превращается в `0`.
-Проверяйте результат после записи — `curl -sI https://example.com/ | head -1`
-должен вернуть `503`.
-
-### `MaintenanceMiddleware`
+Реализуйте `MaintenanceResponseFactory` и передайте его в
+`MaintenanceMiddleware`, чтобы вернуть branded HTML, RFC 9457 problem details,
+локализацию или дополнительные headers.
 
 ```php
 $middleware = new MaintenanceMiddleware(
     provider: $provider,
-    responseFactory: $responseFactory,
+    responseFactory: $psr17ResponseFactory,
+    accessPolicy: $policy,
+    maintenanceResponseFactory: $customMaintenanceResponseFactory,
 );
 ```
 
-Логика решения (по порядку):
+Default factory возвращает:
 
-| Условие | Действие |
+- HTTP 503;
+- `Retry-After`;
+- `Cache-Control: no-store`;
+- JSON при отсутствующем `Accept`, `application/json` и `application/*+json`;
+- HTML, когда у `text/html` выше quality value.
+
+## Справочник API
+
+| API | Назначение |
 |---|---|
-| `enabled === false` | Пропустить |
-| `REMOTE_ADDR` в `allowedIps` | Пропустить |
-| Валидный `?bypass=` токен | Пропустить |
-| Иначе | Вернуть 503 |
-
-## Формат ответа
-
-### JSON (API-клиенты)
-
-Возвращается при `Accept: application/json` или отсутствии заголовка `Accept`:
-
-```http
-HTTP/1.1 503 Service Unavailable
-Content-Type: application/json
-Retry-After: 600
-```
-
-```json
-{
-    "error": "Service Unavailable",
-    "message": "The server is currently undergoing maintenance.",
-    "retryAfter": 600
-}
-```
-
-### HTML (браузеры)
-
-Возвращается при `Accept: text/html` или любом другом не-JSON accept:
-
-```http
-HTTP/1.1 503 Service Unavailable
-Content-Type: text/html; charset=utf-8
-Retry-After: 600
-```
-
-Возвращается минимальная HTML-страница maintenance. В 1.0.x тело ответа не
-настраивается: кастомный `MaintenanceProvider` отдаёт состояние, а не разметку.
-Чтобы оформить страницу по-своему, оберните middleware собственным
-`MiddlewareInterface` и перепишите тело возвращённого им ответа 503.
+| `MaintenanceMiddleware` | Решение о maintenance и PSR-15 response |
+| `MaintenanceState` | Immutable enabled/retry/IP/hash state |
+| `MaintenanceProvider` | Контракт provider состояния |
+| `ConfigMaintenanceProvider` | Immutable provider из array/config |
+| `FileMaintenanceProvider` | Строгий JSON provider с чтением на каждый request |
+| `AtomicMaintenanceFileWriter` | Атомарная замена file state |
+| `MaintenanceAccessPolicy` | Контракт bypass для request |
+| `DefaultMaintenanceAccessPolicy` | Header/query token, IP/CIDR и path policy |
+| `ClientIpResolver` | Контракт определения client IP |
+| `RemoteAddrClientIpResolver` | Валидированный адрес непосредственного peer |
+| `TrustedProxyClientIpResolver` | Доверенная цепочка forwarded addresses |
+| `MaintenanceResponseFactory` | Контракт кастомного ответа 503 |
+| `DefaultMaintenanceResponseFactory` | Negotiated JSON/HTML response |
 
 ## Безопасность
 
-- Bypass-токен сравнивается через `hash_equals()` — timing-канала нет. Защита от перебора — задача приложения.
-- Хранится только SHA-256 hash, никогда plaintext-токен.
-- Bypass-токен передаётся query-параметром и потому логируется на каждом узле. Используйте TLS и ротацию.
-- IP allow-list — строгое строковое сравнение с `REMOTE_ADDR`: без CIDR, без диапазонов, без нормализации IPv6 (`::1` и `0:0:0:0:0:0:0:1` — разные строки).
-- За reverse proxy, балансировщиком или CDN в `REMOTE_ADDR` лежит адрес proxy, поэтому allow-list совпадёт либо со всеми запросами, либо ни с одним. Пакет намеренно игнорирует `X-Forwarded-For`: доверие к нему без allow-list доверенных proxy позволило бы любому клиенту подделать разрешённый адрес. Применяйте allow-list на стороне proxy.
-- `FileMaintenanceProvider` работает по схеме fail-open: нечитаемый или битый файл оставляет сайт доступным (см. выше).
-
-## Ограничения 1.0.x
-
-Не поддерживаются: bypass-токен в заголовке, исключения путей для health- и
-readiness-эндпоинтов, сопоставление по CIDR, определение клиентского IP через
-доверенные proxy, кастомные response factory, атомарный writer состояния и
-консольная команда. Не настраивайте их — в этом релизе их нет.
+- Используйте случайные секретные bypass-токены только через TLS.
+- Предпочитайте `X-Maintenance-Bypass`; отключайте query bypass в новых systems.
+- Не логируйте plaintext bypass header.
+- Явно настройте trusted proxies до чтения forwarded headers.
+- Делайте health exclusions узкими и не возвращающими пользовательские данные.
+- Используйте atomic writer; не обновляйте JSON через `echo > file`.
+- Invalid file state пока означает fail-open и должен отслеживаться мониторингом.
 
 ## Примеры
 
-См. [`examples/`](examples/) — детальное Yii3-wiring: провайдеры, размещение в
-pipeline, bypass-токен, console-команда, переключение через env.
+В [`examples/`](examples/) находятся исполняемые примеры config и file provider.
 
 ## Разработка
 
 ```bash
-make install
 make build
-make cs-fix
+make test-coverage
 make mutation
+make release-check
 ```
 
 ## Лицензия

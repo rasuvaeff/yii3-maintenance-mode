@@ -8,141 +8,60 @@ composer require rasuvaeff/yii3-maintenance-mode
 
 ## Rules
 
-- PSR-15 `MiddlewareInterface`. Place it before routing and auth, but **inside** `ErrorCatcher`, request ID and observability middleware — it must not be the outermost entry.
-- Decision order: disabled → pass; IP in allowedIps → pass; valid bypass token → pass; → 503.
-- Bypass token: `hash_equals($storedHash, hash('sha256', $token))` — removes the timing side channel, not a brute-force defence. Use ≥ 32 random bytes.
-- The bypass token travels in the query string, so it reaches access logs, `Referer` headers, browser history and proxies. TLS + rotation are mandatory. No header transport in 1.0.x.
-- `allowedIps` is an exact string match on `REMOTE_ADDR`: no CIDR, no ranges, no IPv6 normalization. Behind a proxy `REMOTE_ADDR` is the proxy address; `X-Forwarded-For` is deliberately ignored.
-- Content negotiation: no `Accept` or `Accept: application/json` → JSON; otherwise → HTML.
-- Response: HTTP 503 + `Retry-After` header. The body is not configurable in 1.0.x; a provider returns state, not markup. Decorate the middleware to change it.
-- `FileMaintenanceProvider` re-reads file on every call — changes take effect without restart.
-- Missing, unreadable or invalid JSON file → default disabled state. This is **fail-open**: a broken file cancels the maintenance window silently. Values are coerced, not validated.
-- Write the state file atomically: temp file in the same directory + `mv`. Never `echo > maintenance.json`.
-- Parse env flags with `filter_var($v, FILTER_VALIDATE_BOOL)`, never `(bool) $v` — `(bool) 'false'` is `true`.
-- `config/di.php` and `config/params.php` are applied only when the root application uses the `yiisoft/config` plugin. Otherwise wire the services manually.
 - Namespace: `Rasuvaeff\Yii3MaintenanceMode`.
+- Place `MaintenanceMiddleware` after global error/observability/security
+  middleware and before routing/authentication.
+- Default response: HTTP 503, `Retry-After`, `Cache-Control: no-store`.
+- Use `X-Maintenance-Bypass` over TLS. Query bypass is legacy and can leak.
+- Hash tokens with SHA-256; comparison uses `hash_equals()`.
+- `allowedIps` accepts exact IPv4/IPv6 and CIDR.
+- Use `TrustedProxyClientIpResolver` only with explicit trusted proxy rules.
+- Exclude narrow health paths through `DefaultMaintenanceAccessPolicy`.
+- `FileMaintenanceProvider` accepts strict JSON types and fails open to disabled
+  state on missing/invalid files for backward compatibility.
+- Write file state with `AtomicMaintenanceFileWriter` or
+  `vendor/bin/yii3-maintenance`, never shell truncation.
 
-## API
-
-### MaintenanceState
-
-```php
-readonly class MaintenanceState {
-    public bool   $enabled         = false;
-    public int    $retryAfter      = 300;
-    /** @var list<string> */
-    public array  $allowedIps      = [];
-    public string $bypassTokenHash = '';   // sha256 hash, not plaintext
-}
-```
-
-### MaintenanceProvider (interface)
+## Core API
 
 ```php
-interface MaintenanceProvider {
-    public function getState(): MaintenanceState;
-}
+$provider = new ConfigMaintenanceProvider([
+    'enabled' => true,
+    'retryAfter' => 600,
+    'allowedIps' => ['10.0.0.0/8'],
+    'bypassTokenHash' => hash('sha256', $token),
+]);
+
+$policy = new DefaultMaintenanceAccessPolicy(
+    clientIpResolver: new TrustedProxyClientIpResolver(['10.0.0.0/8']),
+    excludedPathPrefixes: ['/health', '/ready'],
+    allowQueryParameter: false,
+);
+
+$middleware = new MaintenanceMiddleware(
+    provider: $provider,
+    responseFactory: $psr17ResponseFactory,
+    accessPolicy: $policy,
+    maintenanceResponseFactory: $customFactory,
+);
 ```
 
-### ConfigMaintenanceProvider
+`MaintenanceProvider::getState(): MaintenanceState` allows DB, Redis, or
+feature-flag providers. `MaintenanceResponseFactory::createResponse()` allows
+custom HTML/JSON. `ClientIpResolver::resolve()` allows infrastructure-aware IP
+resolution.
 
-```php
-new ConfigMaintenanceProvider([
-    'enabled'         => true,
-    'retryAfter'      => 600,
-    'allowedIps'      => ['127.0.0.1'],
-    'bypassTokenHash' => hash('sha256', 'my-secret'),
-])
-```
-
-State is immutable. Best for config/env sources.
-
-### FileMaintenanceProvider
-
-```php
-new FileMaintenanceProvider(filePath: '/var/app/maintenance.json')
-```
-
-Enable / disable (atomic — temp file in the same directory, then `mv`):
+## File mode
 
 ```bash
-dir=/var/www/app
-tmp="$(mktemp "$dir/maintenance.json.XXXXXX")"
-printf '%s' '{"enabled":true,"retryAfter":600}' > "$tmp"   # or {"enabled":false}
-chmod 0644 "$tmp"
-mv -f "$tmp" "$dir/maintenance.json"
+vendor/bin/yii3-maintenance enable --file=/var/app/maintenance.json --retry-after=600
+vendor/bin/yii3-maintenance status --file=/var/app/maintenance.json
+vendor/bin/yii3-maintenance disable --file=/var/app/maintenance.json
 ```
-
-```json
-{"enabled":true,"retryAfter":600,"allowedIps":["10.0.0.1"],"bypassTokenHash":"ea5add57437cbf20af59034d7ed17968dcc56767b41965fcc5b376d45db8b4a3"}
-```
-
-### MaintenanceMiddleware
 
 ```php
-new MaintenanceMiddleware(provider: $provider, responseFactory: $responseFactory)
+$writer = new AtomicMaintenanceFileWriter('/var/app/maintenance.json');
+$writer->write(new MaintenanceState(enabled: true, retryAfter: 600));
+
+$provider = new FileMaintenanceProvider('/var/app/maintenance.json');
 ```
-
-### Bypass token
-
-```bash
-php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"          # token
-php -r "echo hash('sha256', 'my-secret-token'), PHP_EOL;"  # ea5add57437cbf20af59034d7ed17968dcc56767b41965fcc5b376d45db8b4a3
-```
-
-Access: `https://example.com/any-path?bypass=my-secret-token` (over TLS; the token is logged in the URL).
-
-### Yii3 DI — ConfigMaintenanceProvider (default, via config-plugin)
-
-```php
-// config/params.php
-'rasuvaeff/yii3-maintenance-mode' => [
-    'enabled'         => filter_var($_ENV['MAINTENANCE_ENABLED'] ?? false, FILTER_VALIDATE_BOOL),
-    'retryAfter'      => 600,
-    'allowedIps'      => [],
-    'bypassTokenHash' => (string) ($_ENV['MAINTENANCE_BYPASS_HASH'] ?? ''),
-],
-```
-
-### Yii3 DI — FileMaintenanceProvider (runtime toggle)
-
-```php
-// config/di.php
-use Rasuvaeff\Yii3MaintenanceMode\FileMaintenanceProvider;
-use Rasuvaeff\Yii3MaintenanceMode\MaintenanceProvider;
-
-return [
-    MaintenanceProvider::class => [
-        'class' => FileMaintenanceProvider::class,
-        '__construct()' => ['filePath' => dirname(__DIR__) . '/maintenance.json'],
-    ],
-    MaintenanceMiddleware::class => MaintenanceMiddleware::class,
-];
-```
-
-### Middleware pipeline placement
-
-```php
-// config/web.php — inside ErrorCatcher, before Router
-return [
-    ErrorCatcher::class,
-    MaintenanceMiddleware::class,
-    Router::class,
-];
-```
-
-### JSON response (503)
-
-```json
-{
-    "error": "Service Unavailable",
-    "message": "The server is currently undergoing maintenance.",
-    "retryAfter": 600
-}
-```
-
-Headers: `HTTP/1.1 503`, `Retry-After: 600`, `Content-Type: application/json`
-
-### Not available in 1.0.x
-
-Header bypass tokens, path exclusions, CIDR matching, trusted-proxy IP resolution, custom response factories, atomic state writer, console command.

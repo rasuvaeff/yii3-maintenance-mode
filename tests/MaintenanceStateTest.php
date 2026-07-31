@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3MaintenanceMode\Tests;
 
+use InvalidArgumentException;
 use Rasuvaeff\Yii3MaintenanceMode\MaintenanceState;
 use Testo\Assert;
 use Testo\Codecov\Covers;
@@ -36,5 +37,15 @@ final class MaintenanceStateTest
         Assert::same($state->retryAfter, 600);
         Assert::same($state->allowedIps, ['127.0.0.1']);
         Assert::same($state->bypassTokenHash, 'abc123');
+    }
+
+    public function rejectsNegativeRetryAfter(): void
+    {
+        try {
+            new MaintenanceState(retryAfter: -1);
+            Assert::fail('Expected an InvalidArgumentException');
+        } catch (InvalidArgumentException $exception) {
+            Assert::same($exception->getMessage(), 'Retry-After must be non-negative');
+        }
     }
 }

@@ -8,5 +8,11 @@ return [
         'retryAfter' => 300,
         'allowedIps' => [],
         'bypassTokenHash' => '',
+        'access' => [
+            'excludedPathPrefixes' => [],
+            'bypassHeader' => 'X-Maintenance-Bypass',
+            'bypassQueryParameter' => 'bypass',
+            'allowQueryParameter' => true,
+        ],
     ],
 ];
