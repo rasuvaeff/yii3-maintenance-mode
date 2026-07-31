@@ -11,7 +11,7 @@ use Psr\Http\Message\UriInterface;
 /**
  * @internal
  */
-final class FakeRequest implements ServerRequestInterface
+final readonly class FakeRequest implements ServerRequestInterface
 {
     /**
      * @param array<string, mixed> $serverParams
@@ -19,9 +19,9 @@ final class FakeRequest implements ServerRequestInterface
      * @param array<string, list<string>> $headers
      */
     public function __construct(
-        private readonly array $serverParams = [],
-        private readonly array $queryParams = [],
-        private readonly array $headers = [],
+        private array $serverParams = [],
+        private array $queryParams = [],
+        private array $headers = [],
     ) {}
 
     #[\Override]
