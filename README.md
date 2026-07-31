@@ -15,9 +15,11 @@ Maintenance mode PSR-15 middleware for Yii3. Returns HTTP 503 with `Retry-After`
 
 ## Requirements
 
-- PHP 8.3+
+- PHP 8.3 – 8.5
 - `psr/http-message` ^2.0
 - `psr/http-server-middleware` ^1.0
+- `psr/http-server-handler` ^1.0
+- `psr/http-factory` ^1.0 and a PSR-17 implementation — `MaintenanceMiddleware` takes a `ResponseFactoryInterface`
 
 ## Installation
 
@@ -29,19 +31,22 @@ composer require rasuvaeff/yii3-maintenance-mode
 
 ### 1. Add middleware to the pipeline
 
-`MaintenanceMiddleware` must be placed **as early as possible** — before routing and authentication. Otherwise requests reach the router even during maintenance.
+`MaintenanceMiddleware` must run **before routing and authentication** — otherwise requests reach the router even during maintenance. It must **not** be the outermost middleware: the global error catcher, request ID and observability middleware have to wrap it, or an error raised while maintenance is served is returned without them.
 
 ```php
 // config/web.php or wherever your middleware stack is defined
 use Rasuvaeff\Yii3MaintenanceMode\MaintenanceMiddleware;
 
 return [
-    MaintenanceMiddleware::class,   // ← first
-    ErrorCatcher::class,
+    ErrorCatcher::class,            // ← outermost: wraps everything below
+    // request ID, logging and tracing, security headers …
+    MaintenanceMiddleware::class,   // ← before routing and auth
     Router::class,
     // ...
 ];
 ```
+
+In a Yii3 middleware stack the first element is the outermost one: everything listed above `MaintenanceMiddleware` wraps it, everything below it is skipped while maintenance is on.
 
 ### 2. Configure in params.php
 
@@ -57,7 +62,18 @@ return [
 ];
 ```
 
-The package ships `config/di.php` and `config/params.php` via config-plugin. `ConfigMaintenanceProvider` and `MaintenanceMiddleware` are registered automatically.
+The package ships `config/di.php` and `config/params.php`. They are merged automatically **only when the root application uses the `yiisoft/config` plugin** — that is the case for `yiisoft/app` and `yiisoft/app-api`. Without the plugin nothing is registered for you, and the services have to be wired by hand:
+
+```php
+use Psr\Http\Message\ResponseFactoryInterface;
+use Rasuvaeff\Yii3MaintenanceMode\ConfigMaintenanceProvider;
+use Rasuvaeff\Yii3MaintenanceMode\MaintenanceMiddleware;
+
+$middleware = new MaintenanceMiddleware(
+    provider: new ConfigMaintenanceProvider($config),
+    responseFactory: $container->get(ResponseFactoryInterface::class),
+);
+```
 
 ### 3. Enable maintenance mode
 
@@ -66,12 +82,14 @@ The package ships `config/di.php` and `config/params.php` via config-plugin. `Co
 ```php
 // config/params.php
 'rasuvaeff/yii3-maintenance-mode' => [
-    'enabled'         => (bool) ($_ENV['MAINTENANCE_ENABLED'] ?? false),
+    'enabled'         => filter_var($_ENV['MAINTENANCE_ENABLED'] ?? false, FILTER_VALIDATE_BOOL),
     'retryAfter'      => 600,
     'allowedIps'      => ['10.0.0.1'],
-    'bypassTokenHash' => $_ENV['MAINTENANCE_BYPASS_HASH'] ?? '',
+    'bypassTokenHash' => (string) ($_ENV['MAINTENANCE_BYPASS_HASH'] ?? ''),
 ],
 ```
+
+Parse the flag with `filter_var(..., FILTER_VALIDATE_BOOL)`, never with a `(bool)` cast: environment variables are strings, and `(bool) 'false'`, `(bool) '0.0'` and `(bool) 'off'` are all `true` — a cast turns "maintenance off" into "maintenance on".
 
 **Via JSON file** (toggle without deploy or restart):
 
@@ -90,22 +108,40 @@ return [
 ];
 ```
 
-Enable: `echo '{"enabled":true,"retryAfter":600}' > maintenance.json`  
-Disable: `rm maintenance.json`
+The file is re-read on every request, so it must never be observed half-written. Write a temporary file **in the same directory** and move it into place — `rename()` within one filesystem is atomic, a plain `echo > maintenance.json` is not:
+
+```bash
+dir=/var/www/app
+
+# enable
+tmp="$(mktemp "$dir/maintenance.json.XXXXXX")"
+printf '%s' '{"enabled":true,"retryAfter":600}' > "$tmp"
+chmod 0644 "$tmp"
+mv -f "$tmp" "$dir/maintenance.json"
+
+# disable
+tmp="$(mktemp "$dir/maintenance.json.XXXXXX")"
+printf '%s' '{"enabled":false}' > "$tmp"
+chmod 0644 "$tmp"
+mv -f "$tmp" "$dir/maintenance.json"
+```
+
+Deleting the file disables maintenance mode too, because a missing file is read as the default disabled state. An explicit `{"enabled":false}` is preferable: it tells "deliberately off" apart from "the file vanished".
 
 ## Bypass token
 
-Generate a hash of your secret token:
+Generate a long random token and store only its hash:
 
 ```bash
-php -r "echo hash('sha256', 'my-secret-token');"
-# 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"          # the token itself
+php -r "echo hash('sha256', 'my-secret-token'), PHP_EOL;"  # what goes into config
+# ea5add57437cbf20af59034d7ed17968dcc56767b41965fcc5b376d45db8b4a3
 ```
 
 Store the hash in config (never the token itself):
 
 ```php
-'bypassTokenHash' => '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+'bypassTokenHash' => 'ea5add57437cbf20af59034d7ed17968dcc56767b41965fcc5b376d45db8b4a3',
 ```
 
 Access any URL by appending `?bypass=my-secret-token`:
@@ -115,7 +151,9 @@ https://example.com/?bypass=my-secret-token
 https://example.com/admin/dashboard?bypass=my-secret-token
 ```
 
-Token is compared with `hash_equals()` — timing-safe, no brute-force risk.
+The token is compared with `hash_equals()`, which removes the timing side channel. That is not brute-force protection: use at least 32 random bytes, and rate-limit at the web server if the maintenance page is publicly reachable.
+
+**The query parameter travels inside the URL.** It lands in web-server access logs, application logs, the `Referer` header of outgoing links, browser history and every proxy in between. Serve the site over TLS, treat the token as burnt once it has been used on a shared machine, and rotate it after the maintenance window. A header-based transport does not exist in 1.0.x.
 
 ## API reference
 
@@ -139,7 +177,7 @@ interface MaintenanceProvider {
 }
 ```
 
-Implement this to create custom providers (DB, Redis, feature flag, etc.).
+Implement this to create custom providers (DB, Redis, feature flag, etc.). A provider supplies state only — it has no influence on the response body.
 
 ### `ConfigMaintenanceProvider`
 
@@ -160,8 +198,7 @@ State is immutable — set once at construction. Best for config/env sources.
 $provider = new FileMaintenanceProvider(filePath: '/var/app/maintenance.json');
 ```
 
-Reads state on every `getState()` call — changes take effect without restart.  
-Returns disabled state (`enabled: false`) when file is missing or invalid JSON.
+Reads state on every `getState()` call — changes take effect without restart.
 
 `maintenance.json` format:
 
@@ -170,9 +207,11 @@ Returns disabled state (`enabled: false`) when file is missing or invalid JSON.
     "enabled": true,
     "retryAfter": 600,
     "allowedIps": ["10.0.0.1"],
-    "bypassTokenHash": "9f86d081..."
+    "bypassTokenHash": "ea5add57437cbf20af59034d7ed17968dcc56767b41965fcc5b376d45db8b4a3"
 }
 ```
+
+**Failure behaviour is fail-open.** A missing file, an unreadable file and invalid JSON all yield the default state — `enabled: false` — so traffic keeps flowing. That is convenient (a lost file cannot lock you out) and dangerous (a typo in a deploy script silently cancels the maintenance window). Values are coerced, not validated: `"retryAfter": "soon"` becomes `0`. Verify after writing — `curl -sI https://example.com/ | head -1` must report `503`.
 
 ### `MaintenanceMiddleware`
 
@@ -222,14 +261,20 @@ Content-Type: text/html; charset=utf-8
 Retry-After: 600
 ```
 
-A minimal HTML maintenance page is returned. Override by implementing your own `MaintenanceProvider` wrapper or `MiddlewareInterface` decorator.
+A minimal HTML maintenance page is returned. In 1.0.x the body is not configurable: a custom `MaintenanceProvider` supplies state, not markup. To brand the page, wrap the middleware into your own `MiddlewareInterface` and rewrite the body of the 503 it returns.
 
 ## Security
 
-- Bypass token compared with `hash_equals()` — timing-safe
-- Only the hash is stored, never the plaintext token
-- IP allow-list uses strict string comparison on `REMOTE_ADDR`
-- `FileMaintenanceProvider` catches `JsonException` gracefully — invalid file → disabled state (safe default)
+- The bypass token is compared with `hash_equals()` — no timing side channel. Brute-force protection is the application's job.
+- Only the SHA-256 hash is stored, never the plaintext token.
+- The bypass token travels as a query parameter and is therefore logged by every hop. Use TLS and rotate it.
+- The IP allow-list is an exact string match against `REMOTE_ADDR`: no CIDR, no ranges, no IPv6 normalization (`::1` and `0:0:0:0:0:0:0:1` are different strings).
+- Behind a reverse proxy, load balancer or CDN `REMOTE_ADDR` holds the proxy address, so the allow-list matches either every request or none. The package deliberately ignores `X-Forwarded-For`: trusting it without a trusted-proxy allow-list would let any client spoof an allowed address. Enforce the allow-list on the proxy instead.
+- `FileMaintenanceProvider` is fail-open: an unreadable or malformed file leaves the site online (see above).
+
+## Limitations in 1.0.x
+
+Not supported: header-based bypass tokens, path exclusions for health and readiness endpoints, CIDR matching, trusted-proxy client IP resolution, custom response factories, an atomic state writer and a console command. Do not configure them — they are not part of this release.
 
 ## Examples
 

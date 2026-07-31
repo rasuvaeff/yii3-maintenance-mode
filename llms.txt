@@ -8,13 +8,18 @@ composer require rasuvaeff/yii3-maintenance-mode
 
 ## Rules
 
-- PSR-15 `MiddlewareInterface`. Place **first** in the pipeline — before routing and auth.
+- PSR-15 `MiddlewareInterface`. Place it before routing and auth, but **inside** `ErrorCatcher`, request ID and observability middleware — it must not be the outermost entry.
 - Decision order: disabled → pass; IP in allowedIps → pass; valid bypass token → pass; → 503.
-- Bypass token: `hash_equals($storedHash, hash('sha256', $token))` — timing-safe.
+- Bypass token: `hash_equals($storedHash, hash('sha256', $token))` — removes the timing side channel, not a brute-force defence. Use ≥ 32 random bytes.
+- The bypass token travels in the query string, so it reaches access logs, `Referer` headers, browser history and proxies. TLS + rotation are mandatory. No header transport in 1.0.x.
+- `allowedIps` is an exact string match on `REMOTE_ADDR`: no CIDR, no ranges, no IPv6 normalization. Behind a proxy `REMOTE_ADDR` is the proxy address; `X-Forwarded-For` is deliberately ignored.
 - Content negotiation: no `Accept` or `Accept: application/json` → JSON; otherwise → HTML.
-- Response: HTTP 503 + `Retry-After` header.
+- Response: HTTP 503 + `Retry-After` header. The body is not configurable in 1.0.x; a provider returns state, not markup. Decorate the middleware to change it.
 - `FileMaintenanceProvider` re-reads file on every call — changes take effect without restart.
-- Missing or invalid JSON file → disabled state (safe default, no exception thrown).
+- Missing, unreadable or invalid JSON file → default disabled state. This is **fail-open**: a broken file cancels the maintenance window silently. Values are coerced, not validated.
+- Write the state file atomically: temp file in the same directory + `mv`. Never `echo > maintenance.json`.
+- Parse env flags with `filter_var($v, FILTER_VALIDATE_BOOL)`, never `(bool) $v` — `(bool) 'false'` is `true`.
+- `config/di.php` and `config/params.php` are applied only when the root application uses the `yiisoft/config` plugin. Otherwise wire the services manually.
 - Namespace: `Rasuvaeff\Yii3MaintenanceMode`.
 
 ## API
@@ -58,11 +63,18 @@ State is immutable. Best for config/env sources.
 new FileMaintenanceProvider(filePath: '/var/app/maintenance.json')
 ```
 
-Enable:  `echo '{"enabled":true,"retryAfter":600}' > maintenance.json`
-Disable: `rm maintenance.json`
+Enable / disable (atomic — temp file in the same directory, then `mv`):
+
+```bash
+dir=/var/www/app
+tmp="$(mktemp "$dir/maintenance.json.XXXXXX")"
+printf '%s' '{"enabled":true,"retryAfter":600}' > "$tmp"   # or {"enabled":false}
+chmod 0644 "$tmp"
+mv -f "$tmp" "$dir/maintenance.json"
+```
 
 ```json
-{"enabled":true,"retryAfter":600,"allowedIps":["10.0.0.1"],"bypassTokenHash":"9f86d..."}
+{"enabled":true,"retryAfter":600,"allowedIps":["10.0.0.1"],"bypassTokenHash":"ea5add57437cbf20af59034d7ed17968dcc56767b41965fcc5b376d45db8b4a3"}
 ```
 
 ### MaintenanceMiddleware
@@ -74,20 +86,21 @@ new MaintenanceMiddleware(provider: $provider, responseFactory: $responseFactory
 ### Bypass token
 
 ```bash
-php -r "echo hash('sha256', 'my-secret-token');"
+php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"          # token
+php -r "echo hash('sha256', 'my-secret-token'), PHP_EOL;"  # ea5add57437cbf20af59034d7ed17968dcc56767b41965fcc5b376d45db8b4a3
 ```
 
-Access: `https://example.com/any-path?bypass=my-secret-token`
+Access: `https://example.com/any-path?bypass=my-secret-token` (over TLS; the token is logged in the URL).
 
 ### Yii3 DI — ConfigMaintenanceProvider (default, via config-plugin)
 
 ```php
 // config/params.php
 'rasuvaeff/yii3-maintenance-mode' => [
-    'enabled'         => (bool) ($_ENV['MAINTENANCE_ENABLED'] ?? false),
+    'enabled'         => filter_var($_ENV['MAINTENANCE_ENABLED'] ?? false, FILTER_VALIDATE_BOOL),
     'retryAfter'      => 600,
     'allowedIps'      => [],
-    'bypassTokenHash' => $_ENV['MAINTENANCE_BYPASS_HASH'] ?? '',
+    'bypassTokenHash' => (string) ($_ENV['MAINTENANCE_BYPASS_HASH'] ?? ''),
 ],
 ```
 
@@ -110,10 +123,10 @@ return [
 ### Middleware pipeline placement
 
 ```php
-// config/web.php — MaintenanceMiddleware must be first
+// config/web.php — inside ErrorCatcher, before Router
 return [
-    MaintenanceMiddleware::class,
     ErrorCatcher::class,
+    MaintenanceMiddleware::class,
     Router::class,
 ];
 ```
@@ -129,3 +142,7 @@ return [
 ```
 
 Headers: `HTTP/1.1 503`, `Retry-After: 600`, `Content-Type: application/json`
+
+### Not available in 1.0.x
+
+Header bypass tokens, path exclusions, CIDR matching, trusted-proxy IP resolution, custom response factories, atomic state writer, console command.
