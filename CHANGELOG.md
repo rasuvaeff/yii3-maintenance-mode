@@ -16,6 +16,7 @@ Documentation only — no runtime code, public API or dependency changed.
 - List what 1.0.x does not provide (header bypass, path exclusions, CIDR matching, trusted-proxy resolution, custom response factories, atomic writer, console command).
 - Mirror all of the above in `README.ru.md`, `llms.txt` and `examples/yii3-app.php`.
 - Restore the missing `1.0.1` changelog section, fill in the empty `1.0.0` one, and remove the Keep a Changelog preamble that had been left between the `1.0.3` and `1.0.2` entries.
+- Development-only housekeeping, not shipped in the dist archive: apply constructor property promotion in the test doubles (`composer rector` was red) and give `make release-check` the `safe.directory` setting its `bc-check` step needs inside the container.
 
 ## 1.0.3 — 2026-06-30
 
