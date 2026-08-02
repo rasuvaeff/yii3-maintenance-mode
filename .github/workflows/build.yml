@@ -2,9 +2,23 @@ name: build
 
 on:
   pull_request:
+    paths: &paths
+      - 'src/**'
+      - 'tests/**'
+      - 'examples/**'
+      - 'bin/**'
+      - 'config/**'
+      - 'composer.json'
+      - 'psalm.xml'
+      - 'rector.php'
+      - '.php-cs-fixer.php'
+      - 'infection.json5'
+      - 'testo.php'
+      - '.github/workflows/build.yml'
   push:
     branches:
       - master
+    paths: *paths
 
 permissions:
   contents: read

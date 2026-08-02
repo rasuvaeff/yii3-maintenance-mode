@@ -2,9 +2,15 @@ name: static analysis
 
 on:
   pull_request:
+    paths: &paths
+      - 'src/**'
+      - 'composer.json'
+      - 'psalm.xml'
+      - '.github/workflows/static-analysis.yml'
   push:
     branches:
       - master
+    paths: *paths
 
 permissions:
   contents: read
