@@ -92,11 +92,15 @@ final class AtomicMaintenanceFileWriterTest
         try {
             $writer = new AtomicMaintenanceFileWriter($this->filePath);
 
+            set_error_handler(static fn(): bool => true);
+
             try {
                 $writer->write(new MaintenanceState(enabled: true));
                 Assert::fail('Expected a RuntimeException');
             } catch (RuntimeException $exception) {
                 Assert::same($exception->getMessage(), 'Unable to replace maintenance file');
+            } finally {
+                restore_error_handler();
             }
 
             Assert::same(glob($tempFilePattern), []);
