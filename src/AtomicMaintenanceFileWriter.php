@@ -46,7 +46,7 @@ final readonly class AtomicMaintenanceFileWriter
                 throw new RuntimeException('Unable to replace maintenance file');
             }
         } catch (JsonException $exception) {
-            throw new RuntimeException('Unable to encode maintenance state', previous: $exception);
+            throw new RuntimeException('Unable to encode maintenance state', $exception->getCode(), previous: $exception);
         } finally {
             if (file_exists($temporaryPath)) {
                 unlink($temporaryPath);

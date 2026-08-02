@@ -31,7 +31,7 @@ final readonly class DefaultMaintenanceAccessPolicy implements MaintenanceAccess
             throw new InvalidArgumentException('Invalid bypass header name');
         }
 
-        if (!preg_match('/\A[A-Za-z0-9_]+\z/', $this->bypassQueryParameter)) {
+        if (!preg_match('/\A\w+\z/', $this->bypassQueryParameter)) {
             throw new InvalidArgumentException('Invalid bypass query parameter');
         }
 

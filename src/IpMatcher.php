@@ -36,7 +36,7 @@ final readonly class IpMatcher
         $network = substr($rule, 0, $slash);
         $prefix = substr($rule, $slash + 1);
 
-        if ($network === '' || !preg_match('/\A[0-9]+\z/', $prefix)) {
+        if ($network === '' || !preg_match('/\A\d+\z/', $prefix)) {
             return false;
         }
 
