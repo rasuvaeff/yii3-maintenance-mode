@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 — 2026-08-02
 
 - Add safe header bypass with a backward-compatible query migration switch.
 - Add health-path exclusions, IPv4/IPv6 CIDR matching, and trusted proxy client IP resolution.
@@ -25,16 +25,6 @@ Documentation only — no runtime code, public API or dependency changed.
 - Mirror all of the above in `README.ru.md`, `llms.txt` and `examples/yii3-app.php`.
 - Restore the missing `1.0.1` changelog section, fill in the empty `1.0.0` one, and remove the Keep a Changelog preamble that had been left between the `1.0.3` and `1.0.2` entries.
 - Development-only housekeeping, not shipped in the dist archive: apply constructor property promotion in the test doubles (`composer rector` was red) and give `make release-check` the `safe.directory` setting its `bc-check` step needs inside the container.
-=======
-## Unreleased
-
-- Add safe header bypass with a backward-compatible query migration switch.
-- Add health-path exclusions, IPv4/IPv6 CIDR matching, and trusted proxy client IP resolution.
-- Add customizable maintenance response factories and standards-aware content negotiation.
-- Add strict file-state parsing, atomic state writes, and the `yii3-maintenance` command.
-- Validate `REMOTE_ADDR` with `filter_var()` before using it as a client address.
-- Correct unsafe setup guidance, environment parsing, token hash examples, and middleware order.
->>>>>>> c4dd203 (WIP: production hardening (v1.1.0 scope, not for release))
 
 ## 1.0.3 — 2026-06-30
 
@@ -50,7 +40,6 @@ Documentation only — no runtime code, public API or dependency changed.
 
 ## 1.0.1 — 2026-06-26
 
-<<<<<<< HEAD
 - Align quality tooling, CI workflows and documentation with the package template.
 - Require PHP 8.3+ and make eligible classes `final readonly`.
 - Harden CI workflows: SHA-pinned actions, `permissions: { contents: read }`, `persist-credentials: false`.
@@ -64,11 +53,3 @@ Documentation only — no runtime code, public API or dependency changed.
 - Content negotiation: JSON for `Accept: application/json` or a missing `Accept`, HTML otherwise.
 - IP allow-list and a bypass token compared with `hash_equals()`.
 - Ship `config/di.php` and `config/params.php` for the `yiisoft/config` plugin; bind `MaintenanceProvider` to `ConfigMaintenanceProvider` by default.
-=======
-- Align quality tooling, CI, PHP constraints, immutable classes, and documentation with the package template.
-- Migrate the test suite from PHPUnit to Testo and add bundled benchmarks.
-
-## 1.0.0 — 2026-06-02
-
-- Fix the default DI binding for `MaintenanceProvider`.
->>>>>>> c4dd203 (WIP: production hardening (v1.1.0 scope, not for release))
