@@ -22,6 +22,7 @@
     },
     "require": {
         "php": "8.3 - 8.5",
+        "ext-filter": "*",
         "psr/http-factory": "^1.0",
         "psr/http-message": "^2.0",
         "psr/http-server-handler": "^1.0",
@@ -49,6 +50,9 @@
             "Rasuvaeff\\Yii3MaintenanceMode\\Tests\\": "tests/"
         }
     },
+    "bin": [
+        "bin/yii3-maintenance"
+    ],
     "config": {
         "allow-plugins": {
             "ergebnis/composer-normalize": true,
@@ -78,7 +82,8 @@
             "@require-checker",
             "@cs",
             "@psalm",
-            "@test"
+            "@test",
+            "@test:integration"
         ],
         "cs": "php-cs-fixer fix --dry-run --diff --config=.php-cs-fixer.php",
         "cs:fix": "php-cs-fixer fix --diff --config=.php-cs-fixer.php",
@@ -94,6 +99,7 @@
         "require-checker": "composer-require-checker check composer.json",
         "test": "testo --suite=Unit",
         "test:coverage": "testo --suite=Unit --coverage --coverage-clover=build/coverage.xml",
-        "test:coverage:ci": "testo --suite=Unit --coverage-clover=build/coverage.xml"
+        "test:coverage:ci": "testo --suite=Unit --coverage-clover=build/coverage.xml",
+        "test:integration": "testo --suite=Integration"
     }
 }

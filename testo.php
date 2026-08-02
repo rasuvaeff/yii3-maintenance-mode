@@ -16,5 +16,9 @@ return new ApplicationConfig(
             name: 'Benchmarks',
             location: ['benchmarks'],
         ),
+        new SuiteConfig(
+            name: 'Integration',
+            location: ['tests/Integration'],
+        ),
     ],
 );

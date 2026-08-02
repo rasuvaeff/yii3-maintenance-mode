@@ -2,9 +2,23 @@ name: build
 
 on:
   pull_request:
+    paths: &paths
+      - 'src/**'
+      - 'tests/**'
+      - 'examples/**'
+      - 'bin/**'
+      - 'config/**'
+      - 'composer.json'
+      - 'psalm.xml'
+      - 'rector.php'
+      - '.php-cs-fixer.php'
+      - 'infection.json5'
+      - 'testo.php'
+      - '.github/workflows/build.yml'
   push:
     branches:
       - master
+    paths: *paths
 
 permissions:
   contents: read
@@ -28,7 +42,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
@@ -37,7 +51,7 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           coverage: none
-          extensions: json
+          extensions: json, filter
           tools: composer:v2
 
       - name: Cache Composer dependencies
@@ -59,7 +73,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
@@ -68,7 +82,7 @@ jobs:
         with:
           php-version: '8.3'
           coverage: none
-          extensions: json
+          extensions: json, filter
           tools: composer:v2
 
       - name: Cache Composer dependencies
@@ -90,7 +104,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
@@ -99,7 +113,7 @@ jobs:
         with:
           php-version: '8.4'
           coverage: pcov
-          extensions: json
+          extensions: json, filter
           tools: composer:v2
 
       - name: Cache Composer dependencies
@@ -124,7 +138,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -134,7 +148,7 @@ jobs:
         with:
           php-version: '8.4'
           coverage: none
-          extensions: json, bcmath, intl
+          extensions: json, filter, bcmath, intl
           tools: composer:v2
 
       - name: Cache Composer dependencies

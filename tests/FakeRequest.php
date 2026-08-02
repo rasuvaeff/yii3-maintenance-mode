@@ -22,6 +22,7 @@ final readonly class FakeRequest implements ServerRequestInterface
         private array $serverParams = [],
         private array $queryParams = [],
         private array $headers = [],
+        private string $requestTarget = '/',
     ) {}
 
     #[\Override]
@@ -105,7 +106,7 @@ final readonly class FakeRequest implements ServerRequestInterface
     #[\Override]
     public function getRequestTarget(): string
     {
-        return '/';
+        return $this->requestTarget;
     }
 
     #[\Override]

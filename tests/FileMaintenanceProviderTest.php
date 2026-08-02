@@ -73,15 +73,16 @@ final class FileMaintenanceProviderTest
 
     public function readsBypassTokenHashFromFile(): void
     {
+        $hash = hash('sha256', 'secret');
         file_put_contents($this->tmpFile, json_encode([
             'enabled' => true,
-            'bypassTokenHash' => 'somehash',
+            'bypassTokenHash' => $hash,
         ], JSON_THROW_ON_ERROR));
 
         $provider = new FileMaintenanceProvider($this->tmpFile);
         $state = $provider->getState();
 
-        Assert::same($state->bypassTokenHash, 'somehash');
+        Assert::same($state->bypassTokenHash, $hash);
     }
 
     public function returnsDefaultWhenFileContainsInvalidJson(): void
@@ -137,7 +138,7 @@ final class FileMaintenanceProviderTest
         Assert::same($provider->getState()->retryAfter, 300);
     }
 
-    public function castsEnabledToBool(): void
+    public function rejectsNonBooleanEnabled(): void
     {
         file_put_contents($this->tmpFile, json_encode([
             'enabled' => 1,
@@ -145,10 +146,10 @@ final class FileMaintenanceProviderTest
 
         $provider = new FileMaintenanceProvider($this->tmpFile);
 
-        Assert::true($provider->getState()->enabled);
+        Assert::false($provider->getState()->enabled);
     }
 
-    public function castsRetryAfterToInt(): void
+    public function rejectsNonIntegerRetryAfter(): void
     {
         file_put_contents($this->tmpFile, json_encode([
             'retryAfter' => '600',
@@ -156,10 +157,10 @@ final class FileMaintenanceProviderTest
 
         $provider = new FileMaintenanceProvider($this->tmpFile);
 
-        Assert::same($provider->getState()->retryAfter, 600);
+        Assert::same($provider->getState()->retryAfter, 300);
     }
 
-    public function castsBypassTokenHashToString(): void
+    public function rejectsNonStringBypassTokenHash(): void
     {
         file_put_contents($this->tmpFile, json_encode([
             'bypassTokenHash' => 12345,
@@ -167,7 +168,7 @@ final class FileMaintenanceProviderTest
 
         $provider = new FileMaintenanceProvider($this->tmpFile);
 
-        Assert::same($provider->getState()->bypassTokenHash, '12345');
+        Assert::same($provider->getState()->bypassTokenHash, '');
     }
 
     public function defaultsBypassTokenHashToEmptyStringWhenMissing(): void
@@ -199,9 +200,9 @@ final class FileMaintenanceProviderTest
         Assert::instanceOf($provider, MaintenanceProvider::class);
     }
 
-    public function parsesJsonAtDepthLimit(): void
+    public function decodesJsonAtTheDefaultDepthLimit(): void
     {
-        $json = '{"enabled":' . str_repeat('[', 510) . '1' . str_repeat(']', 510) . '}';
+        $json = '{"enabled":true,"junk":' . str_repeat('[', 510) . '1' . str_repeat(']', 510) . '}';
 
         file_put_contents($this->tmpFile, $json);
 
@@ -210,14 +211,60 @@ final class FileMaintenanceProviderTest
         Assert::true($provider->getState()->enabled);
     }
 
-    public function rejectsJsonBeyondDepthLimit(): void
+    public function rejectsJsonBeyondTheDefaultDepthLimit(): void
     {
-        $json = '{"enabled":' . str_repeat('[', 511) . '1' . str_repeat(']', 511) . '}';
+        $json = '{"enabled":true,"junk":' . str_repeat('[', 511) . '1' . str_repeat(']', 511) . '}';
 
         file_put_contents($this->tmpFile, $json);
 
         $provider = new FileMaintenanceProvider($this->tmpFile);
 
         Assert::false($provider->getState()->enabled);
+    }
+
+    public function acceptsZeroRetryAfter(): void
+    {
+        file_put_contents($this->tmpFile, json_encode([
+            'retryAfter' => 0,
+        ], JSON_THROW_ON_ERROR));
+
+        $provider = new FileMaintenanceProvider($this->tmpFile);
+
+        Assert::same($provider->getState()->retryAfter, 0);
+    }
+
+    public function rejectsNegativeRetryAfterWithoutThrowing(): void
+    {
+        file_put_contents($this->tmpFile, json_encode([
+            'retryAfter' => -5,
+            'allowedIps' => ['10.0.0.1'],
+        ], JSON_THROW_ON_ERROR));
+
+        $provider = new FileMaintenanceProvider($this->tmpFile);
+
+        Assert::same($provider->getState()->retryAfter, 300);
+    }
+
+    public function acceptsUppercaseBypassTokenHash(): void
+    {
+        $hash = strtoupper(hash('sha256', 'secret'));
+        file_put_contents($this->tmpFile, json_encode([
+            'bypassTokenHash' => $hash,
+        ], JSON_THROW_ON_ERROR));
+
+        $provider = new FileMaintenanceProvider($this->tmpFile);
+
+        Assert::same($provider->getState()->bypassTokenHash, $hash);
+    }
+
+    public function rejectsMalformedNonHexBypassTokenHash(): void
+    {
+        file_put_contents($this->tmpFile, json_encode([
+            'bypassTokenHash' => 'not-a-valid-hash',
+        ], JSON_THROW_ON_ERROR));
+
+        $provider = new FileMaintenanceProvider($this->tmpFile);
+
+        Assert::same($provider->getState()->bypassTokenHash, '');
     }
 }

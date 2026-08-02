@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3MaintenanceMode\Tests;
 
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Rasuvaeff\Yii3MaintenanceMode\ConfigMaintenanceProvider;
+use Rasuvaeff\Yii3MaintenanceMode\MaintenanceAccessPolicy;
 use Rasuvaeff\Yii3MaintenanceMode\MaintenanceMiddleware;
+use Rasuvaeff\Yii3MaintenanceMode\MaintenanceResponseFactory;
+use Rasuvaeff\Yii3MaintenanceMode\MaintenanceState;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Data\DataProvider;
@@ -140,6 +145,20 @@ final class MaintenanceMiddlewareTest
         Assert::same($response->getStatusCode(), 200);
     }
 
+    public function allowsBypassTokenFromHeader(): void
+    {
+        $token = 'my-secret-token';
+        $middleware = $this->createMiddleware([
+            'enabled' => true,
+            'bypassTokenHash' => hash('sha256', $token),
+        ]);
+        $request = new FakeRequest(headers: ['x-maintenance-bypass' => [$token]]);
+
+        $response = $middleware->process($request, new FakeHandler());
+
+        Assert::same($response->getStatusCode(), 200);
+    }
+
     public function blocksInvalidBypassToken(): void
     {
         $hash = hash('sha256', 'correct-token');
@@ -256,6 +275,46 @@ final class MaintenanceMiddlewareTest
         Assert::same($response->getStatusCode(), 503);
     }
 
+    public function usesExplicitAccessPolicyInsteadOfDefault(): void
+    {
+        $accessPolicy = new class implements MaintenanceAccessPolicy {
+            #[\Override]
+            public function allows(ServerRequestInterface $request, MaintenanceState $state): bool
+            {
+                return true;
+            }
+        };
+        $middleware = new MaintenanceMiddleware(
+            provider: new ConfigMaintenanceProvider(['enabled' => true]),
+            responseFactory: new FakeResponseFactory(),
+            accessPolicy: $accessPolicy,
+        );
+
+        $response = $middleware->process(new FakeRequest(), new FakeHandler());
+
+        Assert::same($response->getStatusCode(), 200);
+    }
+
+    public function usesExplicitResponseFactoryInsteadOfDefault(): void
+    {
+        $maintenanceResponseFactory = new class implements MaintenanceResponseFactory {
+            #[\Override]
+            public function createResponse(ServerRequestInterface $request, MaintenanceState $state): ResponseInterface
+            {
+                return new FakeResponse(599);
+            }
+        };
+        $middleware = new MaintenanceMiddleware(
+            provider: new ConfigMaintenanceProvider(['enabled' => true]),
+            responseFactory: new FakeResponseFactory(),
+            maintenanceResponseFactory: $maintenanceResponseFactory,
+        );
+
+        $response = $middleware->process(new FakeRequest(), new FakeHandler());
+
+        Assert::same($response->getStatusCode(), 599);
+    }
+
     public function jsonResponseBodyContainsAllFields(): void
     {
         $middleware = $this->createMiddleware(['enabled' => true, 'retryAfter' => 600]);
@@ -315,6 +374,18 @@ final class MaintenanceMiddlewareTest
             'empty accept fallback to json' => [
                 'headers' => [],
                 'expectedContentType' => 'application/json',
+            ],
+            'vendor json accept' => [
+                'headers' => ['accept' => ['application/problem+json']],
+                'expectedContentType' => 'application/json',
+            ],
+            'case insensitive json accept' => [
+                'headers' => ['accept' => ['Application/JSON']],
+                'expectedContentType' => 'application/json',
+            ],
+            'html preferred over disabled json' => [
+                'headers' => ['accept' => ['application/json;q=0, text/html;q=1']],
+                'expectedContentType' => 'text/html; charset=utf-8',
             ],
         ];
     }

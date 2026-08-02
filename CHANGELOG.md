@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0 — 2026-08-02
+
+- Add safe header bypass with a backward-compatible query migration switch.
+- Add health-path exclusions, IPv4/IPv6 CIDR matching, and trusted proxy client IP resolution.
+- Add customizable maintenance response factories and standards-aware content negotiation.
+- Add strict file-state parsing, atomic state writes, and the `yii3-maintenance` command.
+- Validate `REMOTE_ADDR` with `filter_var()` before using it as a client address.
+
 ## 1.0.4 — 2026-07-31
 
 Documentation only — no runtime code, public API or dependency changed.

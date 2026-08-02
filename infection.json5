@@ -8,10 +8,31 @@
         "summary": "build/infection-summary.log"
     },
     "testFramework": "testo",
-    // 5 surviving mutants are equivalent ReturnRemoval on defensive fallback
-    // guards (FileMaintenanceProvider file/JSON/array early returns and
-    // MaintenanceMiddleware empty-allow-list / empty-hash guards): the
-    // subsequent guard produces the same result, so no test can kill them.
+    // 11 surviving mutants are genuinely equivalent (v1.1.0 hardening review,
+    // 2026-08-02), achieved MSI 95%:
+    // - AtomicMaintenanceFileWriter::write() line 27: tempnam()'s $prefix
+    //   argument (basename + '.tmp-') only names a transient temp file that
+    //   gets renamed away (success) or unlinked (failure) — never observable.
+    // - DefaultMaintenanceResponseFactory::prefersJson() lines 46/47: the
+    //   `trim($accept) === ''` early-return is redundant with the general
+    //   loop below it — for any whitespace-only $accept, every item's media
+    //   type ends up empty too, so jsonMentioned stays false and the final
+    //   `return !$jsonMentioned` already yields true independently.
+    // - Same method, line 56: the outer `trim($item)` before splitting on
+    //   ';' is redundant — the media type is re-trimmed at line 57 and each
+    //   parameter is re-trimmed at line 61, so no fragment's leading/trailing
+    //   whitespace ever survives to matter.
+    // - Same method, line 81 (`if ($jsonQuality > $htmlQuality) return true`):
+    //   $jsonQuality and $htmlQuality are always clamped to [0, 1], so
+    //   whenever this condition is true, $jsonQuality > $htmlQuality >= 0
+    //   forces $jsonQuality > 0, which independently satisfies line 88's
+    //   `$jsonQuality > 0.0` and returns true anyway.
+    // - FileMaintenanceProvider::getState() lines 19/20/34/38: each early
+    //   return guards a condition where, if bypassed, every field read via
+    //   `$data[...] ?? default` on a non-array/undefined `$data` gracefully
+    //   degrades to the exact same default MaintenanceState via PHP's `??`
+    //   operator — verified by tracing every non-array json_decode() result
+    //   type (string/int/float/bool/null) through the rest of the method.
     "minMsi": 92,
     "mutators": {
         "@default": true

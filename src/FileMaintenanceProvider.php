@@ -16,7 +16,7 @@ final readonly class FileMaintenanceProvider implements MaintenanceProvider
     #[\Override]
     public function getState(): MaintenanceState
     {
-        if (!file_exists($this->filePath)) {
+        if (!is_file($this->filePath) || !is_readable($this->filePath)) {
             return new MaintenanceState();
         }
 
@@ -38,20 +38,33 @@ final readonly class FileMaintenanceProvider implements MaintenanceProvider
             return new MaintenanceState();
         }
 
+        $enabled = $data['enabled'] ?? false;
+        $retryAfter = $data['retryAfter'] ?? 300;
         $ips = $data['allowedIps'] ?? [];
+        $bypassTokenHash = $data['bypassTokenHash'] ?? '';
+
+        if (!is_bool($enabled) || !is_int($retryAfter) || $retryAfter < 0 || !is_array($ips) || !is_string($bypassTokenHash)) {
+            return new MaintenanceState();
+        }
+
+        if ($bypassTokenHash !== '' && !preg_match('/\A[a-f0-9]{64}\z/i', $bypassTokenHash)) {
+            return new MaintenanceState();
+        }
+
+        /** @var list<string> $filteredIps */
         $filteredIps = [];
 
         foreach ($ips as $ip) {
-            if (is_string($ip)) {
+            if (is_string($ip) && IpMatcher::isValidRule($ip)) {
                 $filteredIps[] = $ip;
             }
         }
 
         return new MaintenanceState(
-            enabled: (bool) ($data['enabled'] ?? false),
-            retryAfter: (int) ($data['retryAfter'] ?? 300),
+            enabled: $enabled,
+            retryAfter: $retryAfter,
             allowedIps: $filteredIps,
-            bypassTokenHash: (string) ($data['bypassTokenHash'] ?? ''),
+            bypassTokenHash: $bypassTokenHash,
         );
     }
 }

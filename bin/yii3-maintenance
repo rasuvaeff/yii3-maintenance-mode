@@ -1,0 +1,97 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Rasuvaeff\Yii3MaintenanceMode\AtomicMaintenanceFileWriter;
+use Rasuvaeff\Yii3MaintenanceMode\FileMaintenanceProvider;
+use Rasuvaeff\Yii3MaintenanceMode\MaintenanceState;
+
+$autoloadCandidates = [
+    dirname(__DIR__) . '/vendor/autoload.php',
+    dirname(__DIR__, 3) . '/autoload.php',
+];
+
+if (isset($GLOBALS['_composer_autoload_path']) && is_string($GLOBALS['_composer_autoload_path'])) {
+    array_unshift($autoloadCandidates, $GLOBALS['_composer_autoload_path']);
+}
+
+foreach ($autoloadCandidates as $autoloadPath) {
+    if (is_file($autoloadPath)) {
+        require $autoloadPath;
+        break;
+    }
+}
+
+if (!class_exists(AtomicMaintenanceFileWriter::class)) {
+    fwrite(STDERR, "Unable to load Composer autoloader\n");
+    exit(1);
+}
+
+$arguments = $_SERVER['argv'];
+array_shift($arguments);
+$command = array_shift($arguments) ?? '';
+$options = [];
+
+foreach ($arguments as $argument) {
+    if (!str_starts_with($argument, '--') || !str_contains($argument, '=')) {
+        fwrite(STDERR, "Options must use --name=value syntax\n");
+        exit(2);
+    }
+
+    [$name, $value] = explode('=', substr($argument, 2), 2);
+    $options[$name] = $value;
+}
+
+$filePath = $options['file'] ?? getcwd() . '/maintenance.json';
+
+if ($command === 'status') {
+    $state = (new FileMaintenanceProvider($filePath))->getState();
+    fwrite(STDOUT, json_encode([
+        'enabled' => $state->enabled,
+        'retryAfter' => $state->retryAfter,
+        'allowedIps' => $state->allowedIps,
+        'hasBypassToken' => $state->bypassTokenHash !== '',
+    ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+    exit(0);
+}
+
+if ($command === 'disable') {
+    (new AtomicMaintenanceFileWriter($filePath))->write(new MaintenanceState(enabled: false));
+    fwrite(STDOUT, "Maintenance mode disabled\n");
+    exit(0);
+}
+
+if ($command === 'enable') {
+    $retryAfter = filter_var($options['retry-after'] ?? '300', FILTER_VALIDATE_INT, [
+        'options' => ['min_range' => 0],
+    ]);
+    $bypassTokenHash = $options['bypass-hash'] ?? '';
+
+    if (!is_int($retryAfter)) {
+        fwrite(STDERR, "retry-after must be a non-negative integer\n");
+        exit(2);
+    }
+
+    if ($bypassTokenHash !== '' && !preg_match('/\A[a-f0-9]{64}\z/i', $bypassTokenHash)) {
+        fwrite(STDERR, "bypass-hash must be a SHA-256 hash\n");
+        exit(2);
+    }
+
+    (new AtomicMaintenanceFileWriter($filePath))->write(new MaintenanceState(
+        enabled: true,
+        retryAfter: $retryAfter,
+        bypassTokenHash: $bypassTokenHash,
+    ));
+    fwrite(STDOUT, "Maintenance mode enabled\n");
+    exit(0);
+}
+
+fwrite(STDERR, <<<TEXT
+    Usage:
+      yii3-maintenance enable [--file=maintenance.json] [--retry-after=300] [--bypass-hash=<sha256>]
+      yii3-maintenance disable [--file=maintenance.json]
+      yii3-maintenance status [--file=maintenance.json]
+
+    TEXT);
+exit(2);
