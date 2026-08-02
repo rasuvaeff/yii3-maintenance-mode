@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3MaintenanceMode\Tests;
 
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Rasuvaeff\Yii3MaintenanceMode\ConfigMaintenanceProvider;
+use Rasuvaeff\Yii3MaintenanceMode\MaintenanceAccessPolicy;
 use Rasuvaeff\Yii3MaintenanceMode\MaintenanceMiddleware;
+use Rasuvaeff\Yii3MaintenanceMode\MaintenanceResponseFactory;
+use Rasuvaeff\Yii3MaintenanceMode\MaintenanceState;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Data\DataProvider;
@@ -268,6 +273,46 @@ final class MaintenanceMiddlewareTest
         $response = $middleware->process($request, $handler);
 
         Assert::same($response->getStatusCode(), 503);
+    }
+
+    public function usesExplicitAccessPolicyInsteadOfDefault(): void
+    {
+        $accessPolicy = new class implements MaintenanceAccessPolicy {
+            #[\Override]
+            public function allows(ServerRequestInterface $request, MaintenanceState $state): bool
+            {
+                return true;
+            }
+        };
+        $middleware = new MaintenanceMiddleware(
+            provider: new ConfigMaintenanceProvider(['enabled' => true]),
+            responseFactory: new FakeResponseFactory(),
+            accessPolicy: $accessPolicy,
+        );
+
+        $response = $middleware->process(new FakeRequest(), new FakeHandler());
+
+        Assert::same($response->getStatusCode(), 200);
+    }
+
+    public function usesExplicitResponseFactoryInsteadOfDefault(): void
+    {
+        $maintenanceResponseFactory = new class implements MaintenanceResponseFactory {
+            #[\Override]
+            public function createResponse(ServerRequestInterface $request, MaintenanceState $state): ResponseInterface
+            {
+                return new FakeResponse(599);
+            }
+        };
+        $middleware = new MaintenanceMiddleware(
+            provider: new ConfigMaintenanceProvider(['enabled' => true]),
+            responseFactory: new FakeResponseFactory(),
+            maintenanceResponseFactory: $maintenanceResponseFactory,
+        );
+
+        $response = $middleware->process(new FakeRequest(), new FakeHandler());
+
+        Assert::same($response->getStatusCode(), 599);
     }
 
     public function jsonResponseBodyContainsAllFields(): void

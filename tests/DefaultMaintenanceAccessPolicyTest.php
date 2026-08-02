@@ -41,6 +41,54 @@ final class DefaultMaintenanceAccessPolicyTest
         Assert::false($policy->allows($request, $state));
     }
 
+    public function headerTokenTakesPrecedenceOverQueryWhenBothPresent(): void
+    {
+        $token = 'secret';
+        $policy = new DefaultMaintenanceAccessPolicy();
+        $request = new FakeRequest(
+            queryParams: ['bypass' => 'wrong-token'],
+            headers: ['x-maintenance-bypass' => [$token]],
+        );
+        $state = new MaintenanceState(enabled: true, bypassTokenHash: hash('sha256', $token));
+
+        Assert::true($policy->allows($request, $state));
+    }
+
+    public function allowsQueryTokenWhenNoHeaderTokenPresent(): void
+    {
+        $token = 'secret';
+        $policy = new DefaultMaintenanceAccessPolicy();
+        $request = new FakeRequest(queryParams: ['bypass' => $token]);
+        $state = new MaintenanceState(enabled: true, bypassTokenHash: hash('sha256', $token));
+
+        Assert::true($policy->allows($request, $state));
+    }
+
+    public function neverAllowsAnEmptyTokenEvenIfItMatchesTheHashOfAnEmptyString(): void
+    {
+        $policy = new DefaultMaintenanceAccessPolicy(allowQueryParameter: false);
+        $request = new FakeRequest();
+        $state = new MaintenanceState(enabled: true, bypassTokenHash: hash('sha256', ''));
+
+        Assert::false($policy->allows($request, $state));
+    }
+
+    public function requestTargetWithoutAPathComponentDefaultsToRootPath(): void
+    {
+        $policy = new DefaultMaintenanceAccessPolicy(excludedPathPrefixes: ['/health']);
+        $request = new FakeRequest(requestTarget: '?probe=1');
+        $state = new MaintenanceState();
+
+        Assert::false($policy->allows($request, $state));
+    }
+
+    public function excludedPathPrefixWithTrailingSlashMatchesThePrefixItself(): void
+    {
+        $policy = new DefaultMaintenanceAccessPolicy(excludedPathPrefixes: ['/health/']);
+
+        Assert::true($policy->allows(new FakeRequest(requestTarget: '/health'), new MaintenanceState()));
+    }
+
     public function supportsIpv4AndIpv6Cidrs(): void
     {
         $ipv4Policy = new DefaultMaintenanceAccessPolicy(clientIpResolver: new FakeClientIpResolver('10.20.30.40'));

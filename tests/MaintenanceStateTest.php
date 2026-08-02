@@ -39,6 +39,13 @@ final class MaintenanceStateTest
         Assert::same($state->bypassTokenHash, 'abc123');
     }
 
+    public function acceptsZeroRetryAfter(): void
+    {
+        $state = new MaintenanceState(retryAfter: 0);
+
+        Assert::same($state->retryAfter, 0);
+    }
+
     public function rejectsNegativeRetryAfter(): void
     {
         try {

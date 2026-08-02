@@ -36,6 +36,27 @@ final class TrustedProxyClientIpResolverTest
         Assert::same($resolver->resolve($request), '198.51.100.7');
     }
 
+    public function resolvesNullWithoutRemoteAddressEvenWithForwardedHeader(): void
+    {
+        $resolver = new TrustedProxyClientIpResolver(['10.0.0.0/8']);
+        $request = new FakeRequest(
+            headers: ['x-forwarded-for' => ['203.0.113.5']],
+        );
+
+        Assert::null($resolver->resolve($request));
+    }
+
+    public function stopsAtTheLastTrustedHopInsteadOfTheClaimedClient(): void
+    {
+        $resolver = new TrustedProxyClientIpResolver(['10.0.0.0/8']);
+        $request = new FakeRequest(
+            serverParams: ['REMOTE_ADDR' => '10.0.0.2'],
+            headers: ['x-forwarded-for' => ['203.0.113.9, 192.168.1.1, 10.0.0.1']],
+        );
+
+        Assert::same($resolver->resolve($request), '192.168.1.1');
+    }
+
     public function rejectsMalformedForwardedAddress(): void
     {
         $resolver = new TrustedProxyClientIpResolver(['10.0.0.0/8']);
