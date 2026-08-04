@@ -2,23 +2,9 @@ name: build
 
 on:
   pull_request:
-    paths: &paths
-      - 'src/**'
-      - 'tests/**'
-      - 'examples/**'
-      - 'bin/**'
-      - 'config/**'
-      - 'composer.json'
-      - 'psalm.xml'
-      - 'rector.php'
-      - '.php-cs-fixer.php'
-      - 'infection.json5'
-      - 'testo.php'
-      - '.github/workflows/build.yml'
   push:
     branches:
       - master
-    paths: *paths
 
 permissions:
   contents: read
@@ -28,6 +14,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Relevant changes
+    runs-on: ubuntu-latest
+
+    outputs:
+      run: ${{ steps.filter.outputs.run }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE="$BASE_SHA"
+          elif [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          else
+            BASE="$BEFORE_SHA"
+          fi
+
+          if git diff --quiet "$BASE" "$GITHUB_SHA" -- \
+            src tests config examples composer.json testo.php psalm.xml \
+            rector.php .php-cs-fixer.php infection.json5 \
+            .github/workflows/build.yml; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Not gated on 'changes' like the other jobs below: when a matrix job's own
+  # `if` is false, GitHub Actions skips it as ONE unit and posts a single
+  # check run named literally "PHP ${{ matrix.php }}" (the unexpanded
+  # template), never the per-version names ("PHP 8.3" etc.) that branch
+  # protection requires. Those required checks then sit in Pending forever
+  # and the PR is permanently unmergeable. Non-matrix jobs don't have this
+  # problem, so they stay gated.
   build:
     name: PHP ${{ matrix.php }}
     runs-on: ubuntu-latest
@@ -69,6 +101,8 @@ jobs:
 
   prefer-lowest:
     name: Prefer lowest
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.run == 'true') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -100,6 +134,8 @@ jobs:
 
   coverage:
     name: Coverage & Mutation
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.run == 'true') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -134,6 +170,8 @@ jobs:
 
   compatibility:
     name: Backward compatibility
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.run == 'true') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -162,10 +200,49 @@ jobs:
         run: composer install --no-interaction --no-progress --prefer-dist
 
       - name: Backward compatibility check
+        # Real breaks pass only across an intended major bump: the top
+        # version heading in CHANGELOG.md declares a higher major than the
+        # latest tag. Minor/patch releases stay gated on a clean report.
+        #
+        # A report made up ENTIRELY of "[BC] SKIPPED: ..." lines is also a
+        # pass: SKIPPED means roave/better-reflection could not statically
+        # parse a construct (observed for enum-case and `new Expr()` default
+        # values in promoted constructor properties) - it is not a detected
+        # break. Once a class contains this pattern, EVERY future run reports
+        # the identical SKIPPED finding against ANY --from tag, including a
+        # diff against itself, so gating on it would permanently block every
+        # subsequent PR regardless of content. A single genuine
+        # "[BC] CHANGED:"/"[BC] REMOVED:"/"[BC] ADDED:" line anywhere in the
+        # report still fails the build.
         run: |
           LATEST="$(git describe --tags --abbrev=0 2>/dev/null || true)"
-          if [ -n "$LATEST" ]; then
-            composer bc-check -- --from="$LATEST"
-          else
+          if [ -z "$LATEST" ]; then
             echo "No previous tag - skipping BC check"
+            exit 0
           fi
+          CODE=0
+          OUTPUT="$(composer bc-check -- --from="$LATEST" --install-development-dependencies 2>&1)" || CODE=$?
+          printf '%s\n' "$OUTPUT"
+          if [ "$CODE" -eq 0 ]; then
+            exit 0
+          fi
+          NEXT="$(grep -m1 -oE '## [0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          LATEST_MAJOR="${LATEST#v}"; LATEST_MAJOR="${LATEST_MAJOR%%.*}"
+          NEXT_MAJOR="${NEXT%%.*}"
+          # Only code 3 means "breaks detected". Anything else is roave itself
+          # failing (128 when it cannot clone or resolve the old tag), and a
+          # crash must never be waved through by a CHANGELOG heading or a
+          # SKIPPED-only report.
+          if [ "$CODE" -eq 3 ] && [ -n "$NEXT_MAJOR" ] && [ "$NEXT_MAJOR" -gt "$LATEST_MAJOR" ]; then
+            echo "CHANGELOG declares $NEXT - a new major over $LATEST; BC breaks are expected, treating as pass."
+            exit 0
+          fi
+          if [ "$CODE" -eq 3 ]; then
+            TOTAL="$(printf '%s\n' "$OUTPUT" | { grep -cE '^\[BC\] ' || true; })"
+            SKIPPED="$(printf '%s\n' "$OUTPUT" | { grep -cE '^\[BC\] SKIPPED:' || true; })"
+            if [ "$TOTAL" -gt 0 ] && [ "$TOTAL" -eq "$SKIPPED" ]; then
+              echo "All $TOTAL finding(s) are roave/better-reflection SKIPPED entries (a static-analysis limitation, not a detected break); treating as pass."
+              exit 0
+            fi
+          fi
+          exit "$CODE"
