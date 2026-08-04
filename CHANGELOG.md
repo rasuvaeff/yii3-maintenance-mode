@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 — 2026-08-04
+
+- Fix `DefaultMaintenanceResponseFactory` calling `withHeader(name:, value:)` with named arguments: PSR-7's interface names the parameter `$name`, but concrete implementations (nyholm/psr7, guzzlehttp/psr7, laminas-diactoros) name it `$header`, so every maintenance response built against a real PSR-7 implementation failed with `Unknown named parameter $name` instead of returning 503. Switched to positional arguments.
+- Add a real Yii3 integration suite: resolves `MaintenanceMiddleware` from an actual `Yiisoft\Di\Container` built off the package's own `config/di.php`/`config/params.php` and runs it through a real PSR-15 pipeline (`ErrorCatcher` wrapping `MaintenanceMiddleware`, matching the documented middleware order) — this is what caught the bug above; the unit suite exercised the middleware against a fake response whose `withHeader()` parameter happens to be named `$name`.
+- Add `examples/yii3-integration.php`, an executable mirror of the integration test's container-build recipe.
+
 ## 1.1.0 — 2026-08-02
 
 - Add safe header bypass with a backward-compatible query migration switch.
