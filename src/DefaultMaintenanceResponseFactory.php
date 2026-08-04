@@ -21,11 +21,11 @@ final readonly class DefaultMaintenanceResponseFactory implements MaintenanceRes
     public function createResponse(ServerRequestInterface $request, MaintenanceState $state): ResponseInterface
     {
         $response = $this->responseFactory->createResponse(503);
-        $response = $response->withHeader(name: 'Retry-After', value: (string) $state->retryAfter);
-        $response = $response->withHeader(name: 'Cache-Control', value: 'no-store');
+        $response = $response->withHeader('Retry-After', (string) $state->retryAfter);
+        $response = $response->withHeader('Cache-Control', 'no-store');
 
         if ($this->prefersJson($request->getHeaderLine('Accept'))) {
-            $response = $response->withHeader(name: 'Content-Type', value: 'application/json');
+            $response = $response->withHeader('Content-Type', 'application/json');
             $response->getBody()->write(json_encode([
                 'error' => 'Service Unavailable',
                 'message' => 'The server is currently undergoing maintenance.',
@@ -35,7 +35,7 @@ final readonly class DefaultMaintenanceResponseFactory implements MaintenanceRes
             return $response;
         }
 
-        $response = $response->withHeader(name: 'Content-Type', value: 'text/html; charset=utf-8');
+        $response = $response->withHeader('Content-Type', 'text/html; charset=utf-8');
         $response->getBody()->write($this->htmlBody());
 
         return $response;

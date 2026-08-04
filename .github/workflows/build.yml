@@ -51,7 +51,7 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           coverage: none
-          extensions: json, filter
+          extensions: json, filter, dom, mbstring
           tools: composer:v2
 
       - name: Cache Composer dependencies
@@ -82,7 +82,7 @@ jobs:
         with:
           php-version: '8.3'
           coverage: none
-          extensions: json, filter
+          extensions: json, filter, dom, mbstring
           tools: composer:v2
 
       - name: Cache Composer dependencies
@@ -113,7 +113,7 @@ jobs:
         with:
           php-version: '8.4'
           coverage: pcov
-          extensions: json, filter
+          extensions: json, filter, dom, mbstring
           tools: composer:v2
 
       - name: Cache Composer dependencies
@@ -148,7 +148,7 @@ jobs:
         with:
           php-version: '8.4'
           coverage: none
-          extensions: json, filter, bcmath, intl
+          extensions: json, filter, dom, mbstring, bcmath, intl
           tools: composer:v2
 
       - name: Cache Composer dependencies
