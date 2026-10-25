@@ -35,3 +35,8 @@ jobs:
           persona: auditor
           advanced-security: false
           annotations: true
+          # Pinned like the monorepo template: a floating zizmor would flap
+          # on every upstream release, and the online pin-comment audit it
+          # grew flags the whole fleet's `# v2` setup-php comments.
+          online-audits: false
+          version: 1.25.2
