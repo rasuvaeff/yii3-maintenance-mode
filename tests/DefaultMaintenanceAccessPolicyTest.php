@@ -6,6 +6,7 @@ namespace Rasuvaeff\Yii3MaintenanceMode\Tests;
 
 use InvalidArgumentException;
 use Rasuvaeff\Yii3MaintenanceMode\DefaultMaintenanceAccessPolicy;
+use Rasuvaeff\Yii3MaintenanceMode\IpMatcher;
 use Rasuvaeff\Yii3MaintenanceMode\MaintenanceAccessPolicy;
 use Rasuvaeff\Yii3MaintenanceMode\MaintenanceState;
 use Testo\Assert;
@@ -14,6 +15,7 @@ use Testo\Test;
 
 #[Test]
 #[Covers(DefaultMaintenanceAccessPolicy::class)]
+#[Covers(IpMatcher::class)]
 final class DefaultMaintenanceAccessPolicyTest
 {
     public function implementsAccessPolicy(): void
@@ -121,6 +123,26 @@ final class DefaultMaintenanceAccessPolicyTest
             Assert::fail('Expected an InvalidArgumentException');
         } catch (InvalidArgumentException $exception) {
             Assert::same($exception->getMessage(), 'Invalid excluded path prefix');
+        }
+    }
+
+    public function rejectsInvalidBypassHeaderName(): void
+    {
+        try {
+            new DefaultMaintenanceAccessPolicy(bypassHeader: 'Bad Header');
+            Assert::fail('Expected an InvalidArgumentException');
+        } catch (InvalidArgumentException $exception) {
+            Assert::same($exception->getMessage(), 'Invalid bypass header name');
+        }
+    }
+
+    public function rejectsInvalidBypassQueryParameter(): void
+    {
+        try {
+            new DefaultMaintenanceAccessPolicy(bypassQueryParameter: 'bad-name');
+            Assert::fail('Expected an InvalidArgumentException');
+        } catch (InvalidArgumentException $exception) {
+            Assert::same($exception->getMessage(), 'Invalid bypass query parameter');
         }
     }
 }

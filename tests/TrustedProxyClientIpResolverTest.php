@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rasuvaeff\Yii3MaintenanceMode\Tests;
 
 use InvalidArgumentException;
+use Rasuvaeff\Yii3MaintenanceMode\IpMatcher;
 use Rasuvaeff\Yii3MaintenanceMode\TrustedProxyClientIpResolver;
 use Testo\Assert;
 use Testo\Codecov\Covers;
@@ -12,6 +13,7 @@ use Testo\Test;
 
 #[Test]
 #[Covers(TrustedProxyClientIpResolver::class)]
+#[Covers(IpMatcher::class)]
 final class TrustedProxyClientIpResolverTest
 {
     public function resolvesClientAcrossTrustedProxyChain(): void
@@ -76,5 +78,33 @@ final class TrustedProxyClientIpResolverTest
         } catch (InvalidArgumentException $exception) {
             Assert::same($exception->getMessage(), 'Invalid trusted proxy rule');
         }
+    }
+
+    public function rejectsEmptyTrustedProxyList(): void
+    {
+        try {
+            new TrustedProxyClientIpResolver([]);
+            Assert::fail('Expected an InvalidArgumentException');
+        } catch (InvalidArgumentException $exception) {
+            Assert::same($exception->getMessage(), 'Trusted proxy list must not be empty');
+        }
+    }
+
+    public function rejectsInvalidForwardedForHeaderName(): void
+    {
+        try {
+            new TrustedProxyClientIpResolver(['10.0.0.0/8'], 'Bad Header');
+            Assert::fail('Expected an InvalidArgumentException');
+        } catch (InvalidArgumentException $exception) {
+            Assert::same($exception->getMessage(), 'Invalid forwarded-for header name');
+        }
+    }
+
+    public function returnsTrustedPeerWhenForwardedHeaderIsAbsent(): void
+    {
+        $resolver = new TrustedProxyClientIpResolver(['10.0.0.0/8']);
+        $request = new FakeRequest(serverParams: ['REMOTE_ADDR' => '10.0.0.2']);
+
+        Assert::same($resolver->resolve($request), '10.0.0.2');
     }
 }
