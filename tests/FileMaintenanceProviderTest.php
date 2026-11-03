@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rasuvaeff\Yii3MaintenanceMode\Tests;
 
 use Rasuvaeff\Yii3MaintenanceMode\FileMaintenanceProvider;
+use Rasuvaeff\Yii3MaintenanceMode\IpMatcher;
 use Rasuvaeff\Yii3MaintenanceMode\MaintenanceProvider;
 use Testo\Assert;
 use Testo\Codecov\Covers;
@@ -14,6 +15,7 @@ use Testo\Test;
 
 #[Test]
 #[Covers(FileMaintenanceProvider::class)]
+#[Covers(IpMatcher::class)]
 final class FileMaintenanceProviderTest
 {
     private string $tmpFile;

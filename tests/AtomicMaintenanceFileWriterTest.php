@@ -108,4 +108,34 @@ final class AtomicMaintenanceFileWriterTest
             rmdir($this->filePath);
         }
     }
+
+    public function throwsWhenDirectoryDoesNotExist(): void
+    {
+        $writer = new AtomicMaintenanceFileWriter(sys_get_temp_dir() . '/maintenance_missing_' . uniqid() . '/state.json');
+
+        try {
+            $writer->write(new MaintenanceState(enabled: true));
+            Assert::fail('Expected a RuntimeException');
+        } catch (RuntimeException $exception) {
+            Assert::same($exception->getMessage(), 'Maintenance file directory does not exist');
+        }
+    }
+
+    public function throwsAndCleansUpWhenStateCannotBeEncoded(): void
+    {
+        $tempFilePattern = dirname($this->filePath) . '/' . basename($this->filePath) . '.tmp-*';
+        $writer = new AtomicMaintenanceFileWriter($this->filePath);
+
+        try {
+            $writer->write(new MaintenanceState(enabled: true, allowedIps: ["\xB1\x31"]));
+            Assert::fail('Expected a RuntimeException');
+        } catch (RuntimeException $exception) {
+            Assert::same($exception->getMessage(), 'Unable to encode maintenance state');
+            Assert::instanceOf($exception->getPrevious(), \JsonException::class);
+            Assert::same($exception->getCode(), JSON_ERROR_UTF8);
+        }
+
+        Assert::false(file_exists($this->filePath));
+        Assert::same(glob($tempFilePattern), []);
+    }
 }

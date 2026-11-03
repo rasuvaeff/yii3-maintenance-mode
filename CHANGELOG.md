@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `composer mutation` now runs Infection with `--with-uncovered`, so code the tests execute without naming it in `#[Covers]` is mutated and counted (overall MSI was 66% when measured this way, now 94% against `minMsi` 92). Added `IpMatcherTest` (CIDR boundaries, partial-byte prefixes, IPv6, family mismatch, rule validation), tests for the previously unexercised constructor validations, JSON-encode failure and missing-directory paths of `AtomicMaintenanceFileWriter`, and a trusted peer without a forwarded header. `infection.json5` gained the template's signature-default ignore regex and disabled `PublicVisibility`/`ProtectedVisibility`. No `src/` changes.
+
 ## 1.1.1 — 2026-08-04
 
 - Fix `DefaultMaintenanceResponseFactory` calling `withHeader(name:, value:)` with named arguments: PSR-7's interface names the parameter `$name`, but concrete implementations (nyholm/psr7, guzzlehttp/psr7, laminas-diactoros) name it `$header`, so every maintenance response built against a real PSR-7 implementation failed with `Unknown named parameter $name` instead of returning 503. Switched to positional arguments.
