@@ -10,7 +10,10 @@ bypass tokens. Content negotiation: JSON for `Accept: application/json` (default
 
 Namespace: `Rasuvaeff\Yii3MaintenanceMode`.
 Public API: `MaintenanceMiddleware`, `MaintenanceState`, `MaintenanceProvider`,
-`ConfigMaintenanceProvider`, `FileMaintenanceProvider`, `MaintenanceAccessPolicy`,
+`ConfigMaintenanceProvider`, `FileMaintenanceProvider`, `MaintenanceRedisClient`,
+`RedisMaintenanceProvider`, `RedisMaintenanceWriter`,
+`Redis\PhpRedisMaintenanceClient`, `Redis\PredisMaintenanceClient`,
+`MaintenanceAccessPolicy`,
 `DefaultMaintenanceAccessPolicy`, `ClientIpResolver`, `RemoteAddrClientIpResolver`,
 `TrustedProxyClientIpResolver`, `MaintenanceResponseFactory`,
 `DefaultMaintenanceResponseFactory`, `AtomicMaintenanceFileWriter`.
@@ -39,6 +42,20 @@ docker run --rm -v "$PWD":/app -w /app composer:2 composer test
 
 - `MaintenanceState` is `readonly` — all fields are immutable after construction.
 - `FileMaintenanceProvider` accepts strict JSON types and falls back to disabled state.
+- The JSON state document is encoded/decoded by the internal `StateJson` codec, shared
+  by the file and Redis backends — change it and both `FileMaintenanceProviderTest`
+  and `RedisMaintenanceProviderTest` must stay green.
+- Redis clients are optional deps: `predis/predis` lives in `require-dev` + `suggest`,
+  `ext-redis` is `suggest`-only. `psalm.xml` enables the bundled `redis` extension stub
+  for `\Redis`; `composer-require-checker.json` whitelists `Redis`, `Predis\ClientInterface`
+  and `Predis\Response\Status`.
+- `tests/Integration/RedisMaintenanceIntegrationTest` carries `#[Covers]` (NOT
+  `#[CoversNothing]`): the two real Redis clients have no other coverage, and
+  `CoversNothing` would zero their mutation attribution. It self-skips without
+  `REDIS_HOST`; run mutation with Redis reachable and `ext-redis` loaded, or the
+  phpredis mutants escape and MSI drops below the gate. `testo.php` excludes
+  `tests/Integration` from the Unit suite — otherwise the integration classes
+  execute twice and infection's coverage mapping breaks.
 - File state changes use `AtomicMaintenanceFileWriter`; never truncate the live file.
 - Header bypass is preferred; legacy query bypass remains configurable for migration.
 - Content negotiation honors JSON suffix media types and quality values.

@@ -124,6 +124,50 @@ malformed, or schema-invalid files currently produce disabled state. This is a
 legacy fail-open policy; use the atomic writer and monitor file errors rather
 than relying on partial manual writes.
 
+### Redis (multi-node deployments)
+
+A file lives on one node's filesystem. When every node of the deployment must
+see the same toggle at the same time, store the state in a shared Redis key:
+`RedisMaintenanceProvider` reads it, `RedisMaintenanceWriter` toggles it.
+
+```php
+use Rasuvaeff\Yii3MaintenanceMode\MaintenanceProvider;
+use Rasuvaeff\Yii3MaintenanceMode\Redis\PhpRedisMaintenanceClient;
+use Rasuvaeff\Yii3MaintenanceMode\RedisMaintenanceProvider;
+use Rasuvaeff\Yii3MaintenanceMode\RedisMaintenanceWriter;
+
+$redis = new \Redis(); // or any predis client via Redis\PredisMaintenanceClient
+$redis->connect('127.0.0.1');
+
+$provider = new RedisMaintenanceProvider(new PhpRedisMaintenanceClient($redis));
+$writer = new RedisMaintenanceWriter(new PhpRedisMaintenanceClient($redis));
+
+$writer->write(new MaintenanceState(enabled: true, retryAfter: 600));
+$writer->clear(); // remove the key: reads back as the default disabled state
+```
+
+Bind it in application DI (the application layer overrides the package's
+default config-backed binding):
+
+```php
+return [
+    MaintenanceProvider::class => [
+        'class' => RedisMaintenanceProvider::class,
+        '__construct()' => [
+            'client' => new PhpRedisMaintenanceClient($redis),
+            'key' => 'maintenance:state', // default
+        ],
+    ],
+];
+```
+
+The client seam is `MaintenanceRedisClient`; both `ext-redis` and
+`predis/predis` are optional (`suggest`) — installing this package pulls
+neither. A missing key, malformed or schema-invalid JSON degrades to the
+default disabled state, exactly like the file provider. The JSON document is
+shared with `FileMaintenanceProvider`/`AtomicMaintenanceFileWriter`, so a
+state written by one backend reads back identically through the other.
+
 ## Bypass token
 
 Generate a high-entropy token and its SHA-256 hash:
@@ -220,6 +264,11 @@ The default factory returns:
 | `ConfigMaintenanceProvider` | Immutable array/config-backed provider |
 | `FileMaintenanceProvider` | Strict JSON provider read on each request |
 | `AtomicMaintenanceFileWriter` | Atomic file-state replacement |
+| `MaintenanceRedisClient` | Redis client seam (GET/SET/DEL) |
+| `RedisMaintenanceProvider` | Shared-Redis-key provider for multi-node |
+| `RedisMaintenanceWriter` | Redis SET/DEL state toggle |
+| `Redis\PhpRedisMaintenanceClient` | `ext-redis` client implementation |
+| `Redis\PredisMaintenanceClient` | `predis/predis` client implementation |
 | `MaintenanceAccessPolicy` | Request bypass contract |
 | `DefaultMaintenanceAccessPolicy` | Header/query token, IP/CIDR, path policy |
 | `ClientIpResolver` | Client IP resolution contract |

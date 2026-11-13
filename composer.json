@@ -34,6 +34,7 @@
         "infection/infection": "^0.33",
         "maglnet/composer-require-checker": "^4.17",
         "nyholm/psr7": "^1.8",
+        "predis/predis": "^2.2",
         "rector/rector": "^2.4",
         "roave/backward-compatibility-check": "^8.0",
         "testo/bridge-infection": "^0.1.6",
@@ -41,6 +42,10 @@
         "vimeo/psalm": "^7.0",
         "yiisoft/di": "^1.4",
         "yiisoft/error-handler": "^4.3"
+    },
+    "suggest": {
+        "ext-redis": "Required to use Redis\\PhpRedisMaintenanceClient",
+        "predis/predis": "Required to use Redis\\PredisMaintenanceClient (^2.2, pure-PHP alternative to ext-redis)"
     },
     "autoload": {
         "psr-4": {

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3MaintenanceMode;
 
-use JsonException;
+use Rasuvaeff\Yii3MaintenanceMode\Internal\StateJson;
 use RuntimeException;
 
 /**
@@ -31,12 +31,7 @@ final readonly class AtomicMaintenanceFileWriter
         }
 
         try {
-            $content = json_encode([
-                'enabled' => $state->enabled,
-                'retryAfter' => $state->retryAfter,
-                'allowedIps' => $state->allowedIps,
-                'bypassTokenHash' => $state->bypassTokenHash,
-            ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL;
+            $content = StateJson::encode($state, pretty: true) . PHP_EOL;
 
             if (file_put_contents($temporaryPath, $content, LOCK_EX) !== strlen($content)) {
                 throw new RuntimeException('Unable to write temporary maintenance file');
@@ -45,8 +40,6 @@ final readonly class AtomicMaintenanceFileWriter
             if (!chmod($temporaryPath, 0o600) || !rename($temporaryPath, $this->filePath)) {
                 throw new RuntimeException('Unable to replace maintenance file');
             }
-        } catch (JsonException $exception) {
-            throw new RuntimeException('Unable to encode maintenance state', $exception->getCode(), previous: $exception);
         } finally {
             if (file_exists($temporaryPath)) {
                 unlink($temporaryPath);

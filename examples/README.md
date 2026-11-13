@@ -5,6 +5,7 @@
 | `basic.php` | Immutable config-backed state | No |
 | `file-toggle.php` | Atomic file enable/disable and strict reading | No |
 | `yii3-integration.php` | Resolving `MaintenanceMiddleware` from a real Yiisoft DI container built from the package's own `config/di.php`/`config/params.php`, then running a PSR-15 request through it | No |
+| `redis.php` | Redis-backed state shared across nodes (`RedisMaintenanceProvider`/`RedisMaintenanceWriter` over predis) | Redis (`REDIS_HOST`) |
 
 ## Running
 

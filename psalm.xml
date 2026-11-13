@@ -10,6 +10,12 @@
             <directory name="vendor"/>
         </ignoreFiles>
     </projectFiles>
+
+    <!-- PhpRedisMaintenanceClient types against \Redis; the bundled stub lets
+         psalm analyze it without ext-redis being installed. -->
+    <enableExtensions>
+        <extension name="redis"/>
+    </enableExtensions>
     <issueHandlers>
         <MixedAssignment errorLevel="suppress"/>
         <MixedArrayAccess errorLevel="suppress"/>
