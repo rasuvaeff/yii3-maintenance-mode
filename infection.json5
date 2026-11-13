@@ -10,13 +10,17 @@
     "testFramework": "testo",
     // Measured with --with-uncovered and zend.assertions=-1 (as in CI), with the
     // coverage-job's redis service reachable (REDIS_HOST) and ext-redis loaded:
-    // 379 mutants, 18 Escaped, 7 Not Covered, 4 Ignored, overall MSI 93%.
+    // 388 mutants, 21 Escaped, 7 Not Covered, 4 Ignored, overall MSI 93%.
     // The 7 Not Covered are Throw_ mutants on error paths a test cannot stage
     // (tempnam()/file_put_contents() failures in AtomicMaintenanceFileWriter,
     // the unreachable-by-construction JsonException catch in StateJson::encode,
     // and Redis SET/DEL server rejections in PhpRedisMaintenanceClient — a real
-    // server accepts every SET/DEL these tests issue). All 18 survivors are
-    // genuinely equivalent or unreachable:
+    // server accepts every SET/DEL these tests issue; the GET error path IS
+    // staged, via a WRONGTYPE key in the integration suite). Of the 21 Escaped,
+    // two are the clearLastError() MethodCallRemoval pair around the phpredis
+    // GET error check: clearing a stale error flag is unobservable by
+    // construction (the flag is either null or about to throw). The rest are
+    // the previously documented equivalents:
     // - IpMatcher::isValidRule() line 49: `(int) $prefix` — $prefix already matched
     //   `\A\d+\z`, so comparing the numeric string with `<=` is the same as comparing
     //   the cast integer (an overflowing prefix becomes a float and is still > 128).

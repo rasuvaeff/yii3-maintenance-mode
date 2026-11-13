@@ -132,6 +132,7 @@ see the same toggle at the same time, store the state in a shared Redis key:
 
 ```php
 use Rasuvaeff\Yii3MaintenanceMode\MaintenanceProvider;
+use Rasuvaeff\Yii3MaintenanceMode\MaintenanceState;
 use Rasuvaeff\Yii3MaintenanceMode\Redis\PhpRedisMaintenanceClient;
 use Rasuvaeff\Yii3MaintenanceMode\RedisMaintenanceProvider;
 use Rasuvaeff\Yii3MaintenanceMode\RedisMaintenanceWriter;
@@ -167,6 +168,16 @@ neither. A missing key, malformed or schema-invalid JSON degrades to the
 default disabled state, exactly like the file provider. The JSON document is
 shared with `FileMaintenanceProvider`/`AtomicMaintenanceFileWriter`, so a
 state written by one backend reads back identically through the other.
+
+Two operational notes:
+
+- An **unreachable Redis is not silently mapped to the disabled state** — a
+  throwing client propagates and the request fails loudly. Failing open during
+  an outage would serve traffic through an enabled maintenance window with
+  nobody noticing; wrap the provider if you accept that trade-off.
+- The `ext-redis` connection must not use a serializer
+  (`OPT_SERIALIZER === SERIALIZER_NONE`), or the stored bytes are unreadable
+  by plain GET from other nodes.
 
 ## Bypass token
 

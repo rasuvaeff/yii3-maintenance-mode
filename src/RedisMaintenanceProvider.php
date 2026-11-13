@@ -21,6 +21,14 @@ final readonly class RedisMaintenanceProvider implements MaintenanceProvider
 {
     public const string DEFAULT_KEY = 'maintenance:state';
 
+    /**
+     * An unreachable or failing Redis is NOT silently mapped to the disabled
+     * state: a throwing client propagates from {@see getState()} and the
+     * request fails loudly. Silently failing open during an outage would serve
+     * traffic through an enabled maintenance window with nobody noticing —
+     * wrap this provider in your own try/catch if you accept that trade-off.
+     */
+
     public function __construct(
         private MaintenanceRedisClient $client,
         private string $key = self::DEFAULT_KEY,

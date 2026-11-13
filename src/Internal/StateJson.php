@@ -53,7 +53,7 @@ final readonly class StateJson
         $ips = $data['allowedIps'] ?? [];
         $bypassTokenHash = $data['bypassTokenHash'] ?? '';
 
-        if (!is_bool($enabled) || !is_int($retryAfter) || $retryAfter < 0 || !is_array($ips) || !is_string($bypassTokenHash)) {
+        if (!is_bool($enabled) || !is_int($retryAfter) || $retryAfter < 0 || !is_array($ips) || !array_is_list($ips) || !is_string($bypassTokenHash)) {
             return new MaintenanceState();
         }
 

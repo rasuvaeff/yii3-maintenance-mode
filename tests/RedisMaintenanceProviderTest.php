@@ -83,6 +83,7 @@ final class RedisMaintenanceProviderTest
         yield 'negative retryAfter' => ['{"enabled":true,"retryAfter":-1}'];
         yield 'wrong retryAfter type' => ['{"enabled":true,"retryAfter":"300"}'];
         yield 'allowedIps not array' => ['{"enabled":true,"allowedIps":"10.0.0.1"}'];
+        yield 'allowedIps json object' => ['{"enabled":true,"allowedIps":{"entry":"10.0.0.1"}}'];
         yield 'invalid bypass hash' => ['{"enabled":true,"bypassTokenHash":"zz"}'];
         yield 'bypass hash not string' => ['{"enabled":true,"bypassTokenHash":123}'];
     }

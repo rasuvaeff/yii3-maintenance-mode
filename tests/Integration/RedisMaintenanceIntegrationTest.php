@@ -53,6 +53,31 @@ final class RedisMaintenanceIntegrationTest
         $this->roundTrip(new \Rasuvaeff\Yii3MaintenanceMode\Redis\PhpRedisMaintenanceClient($phpRedis));
     }
 
+    public function getFailureSurfacesInsteadOfReadingDisabledState(): void
+    {
+        if ($this->skipWithoutRedis() || !extension_loaded('redis')) {
+            return;
+        }
+
+        $phpRedis = new \Redis();
+        $phpRedis->connect((string) getenv('REDIS_HOST'));
+
+        $key = 'test:maintenance:' . uniqid();
+        $phpRedis->del($key);
+        $phpRedis->rPush($key, 'not-a-string'); // WRONGTYPE for GET
+
+        $client = new \Rasuvaeff\Yii3MaintenanceMode\Redis\PhpRedisMaintenanceClient($phpRedis);
+
+        try {
+            $client->get($key);
+            Assert::fail('Expected a RuntimeException');
+        } catch (\RuntimeException $exception) {
+            Assert::true(str_starts_with($exception->getMessage(), 'Redis GET failed'));
+        } finally {
+            $phpRedis->del($key);
+        }
+    }
+
     private function roundTrip(\Rasuvaeff\Yii3MaintenanceMode\MaintenanceRedisClient $client): void
     {
         $key = 'test:maintenance:' . uniqid();
