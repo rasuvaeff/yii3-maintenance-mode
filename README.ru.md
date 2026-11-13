@@ -124,6 +124,61 @@ return [
 disabled state. Это legacy fail-open policy; используйте atomic writer и
 мониторинг ошибок файла вместо частичных ручных записей.
 
+### Redis (multi-node деплои)
+
+Файл живёт на файловой системе одного узла. Когда все узлы деплоя должны видеть
+переключатель одновременно — храните state в общем Redis-ключе:
+`RedisMaintenanceProvider` читает его, `RedisMaintenanceWriter` переключает.
+
+```php
+use Rasuvaeff\Yii3MaintenanceMode\MaintenanceProvider;
+use Rasuvaeff\Yii3MaintenanceMode\MaintenanceState;
+use Rasuvaeff\Yii3MaintenanceMode\Redis\PhpRedisMaintenanceClient;
+use Rasuvaeff\Yii3MaintenanceMode\RedisMaintenanceProvider;
+use Rasuvaeff\Yii3MaintenanceMode\RedisMaintenanceWriter;
+
+$redis = new \Redis(); // или любой predis-клиент через Redis\PredisMaintenanceClient
+$redis->connect('127.0.0.1');
+
+$provider = new RedisMaintenanceProvider(new PhpRedisMaintenanceClient($redis));
+$writer = new RedisMaintenanceWriter(new PhpRedisMaintenanceClient($redis));
+
+$writer->write(new MaintenanceState(enabled: true, retryAfter: 600));
+$writer->clear(); // удалить ключ: читается как state по умолчанию (disabled)
+```
+
+Биндинг в DI приложения (слой приложения переопределяет дефолтный
+config-биндинг пакета):
+
+```php
+return [
+    MaintenanceProvider::class => [
+        'class' => RedisMaintenanceProvider::class,
+        '__construct()' => [
+            'client' => new PhpRedisMaintenanceClient($redis),
+            'key' => 'maintenance:state', // default
+        ],
+    ],
+];
+```
+
+Клиентский seam — `MaintenanceRedisClient`; и `ext-redis`, и `predis/predis`
+опциональны (`suggest`) — установка пакета не тянет ни того, ни другого.
+Отсутствующий ключ, повреждённый или невалидный JSON деградирует до state по
+умолчанию (disabled), ровно как у file-провайдера. JSON-документ общий с
+`FileMaintenanceProvider`/`AtomicMaintenanceFileWriter` — state, записанный
+одним бекендом, читается другим без изменений.
+
+Две эксплуатационные оговорки:
+
+- **Недоступный Redis не отображается молча на disabled state** — исключение
+  из клиента пробрасывается наружу, и запрос падает заметно. Молчаливый
+  fail-open во время сбоя подавал бы трафик в включённое maintenance-окно
+  незаметно для всех; оберните провайдер, если этот размен осознан.
+- Соединение `ext-redis` не должно использовать сериализатор
+  (`OPT_SERIALIZER === SERIALIZER_NONE`), иначе записанные байты нечитаемы
+  обычным GET с других узлов.
+
 ## Bypass-токен
 
 Сгенерируйте высокоэнтропийный токен и его SHA-256 hash:
@@ -220,6 +275,11 @@ Default factory возвращает:
 | `ConfigMaintenanceProvider` | Immutable provider из array/config |
 | `FileMaintenanceProvider` | Строгий JSON provider с чтением на каждый request |
 | `AtomicMaintenanceFileWriter` | Атомарная замена file state |
+| `MaintenanceRedisClient` | Redis-клиентский seam (GET/SET/DEL) |
+| `RedisMaintenanceProvider` | Провайдер из общего Redis-ключа для multi-node |
+| `RedisMaintenanceWriter` | Переключение state через Redis SET/DEL |
+| `Redis\PhpRedisMaintenanceClient` | Реализация клиента над `ext-redis` |
+| `Redis\PredisMaintenanceClient` | Реализация клиента над `predis/predis` |
 | `MaintenanceAccessPolicy` | Контракт bypass для request |
 | `DefaultMaintenanceAccessPolicy` | Header/query token, IP/CIDR и path policy |
 | `ClientIpResolver` | Контракт определения client IP |

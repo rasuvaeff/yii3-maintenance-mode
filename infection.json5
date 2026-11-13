@@ -8,9 +8,19 @@
         "summary": "build/infection-summary.log"
     },
     "testFramework": "testo",
-    // Measured with --with-uncovered and zend.assertions=-1 (as in CI): 340 mutants,
-    // 14 Escaped, 3 Not Covered, 4 Ignored, overall MSI 94%. All 17 survivors are
-    // genuinely equivalent or unreachable:
+    // Measured with --with-uncovered and zend.assertions=-1 (as in CI), with the
+    // coverage-job's redis service reachable (REDIS_HOST) and ext-redis loaded:
+    // 388 mutants, 21 Escaped, 7 Not Covered, 4 Ignored, overall MSI 93%.
+    // The 7 Not Covered are Throw_ mutants on error paths a test cannot stage
+    // (tempnam()/file_put_contents() failures in AtomicMaintenanceFileWriter,
+    // the unreachable-by-construction JsonException catch in StateJson::encode,
+    // and Redis SET/DEL server rejections in PhpRedisMaintenanceClient — a real
+    // server accepts every SET/DEL these tests issue; the GET error path IS
+    // staged, via a WRONGTYPE key in the integration suite). Of the 21 Escaped,
+    // two are the clearLastError() MethodCallRemoval pair around the phpredis
+    // GET error check: clearing a stale error flag is unobservable by
+    // construction (the flag is either null or about to throw). The rest are
+    // the previously documented equivalents:
     // - IpMatcher::isValidRule() line 49: `(int) $prefix` — $prefix already matched
     //   `\A\d+\z`, so comparing the numeric string with `<=` is the same as comparing
     //   the cast integer (an overflowing prefix becomes a float and is still > 128).
@@ -18,13 +28,6 @@
     //   bytes both substr() calls return '' and compare equal.
     // - IpMatcher::matchesRule() line 83: `0xff` -> `0xfe` in `& 0xff`: the shifted
     //   value has a clear low bit for every reachable $remainingBits (1..7).
-    // - AtomicMaintenanceFileWriter::write() lines 30 and 42: tempnam() falling back
-    //   to the system temp dir instead of returning false, and file_put_contents()
-    //   returning a short count, cannot be provoked from a test (Throw_ Not Covered).
-    // - FileMaintenanceProvider::getState() line 27: `!is_string($content)` guard;
-    //   file_get_contents() failing after is_readable() succeeded is a race that a
-    //   test cannot stage, and json_decode(false) would reach the same default state.
-    // Documented earlier (v1.1.0 hardening review, 2026-08-02), still equivalent:
     // - AtomicMaintenanceFileWriter::write() line 27: tempnam()'s $prefix
     //   argument (basename + '.tmp-') only names a transient temp file that
     //   gets renamed away (success) or unlinked (failure) — never observable.
@@ -42,12 +45,21 @@
     //   whenever this condition is true, $jsonQuality > $htmlQuality >= 0
     //   forces $jsonQuality > 0, which independently satisfies line 88's
     //   `$jsonQuality > 0.0` and returns true anyway.
-    // - FileMaintenanceProvider::getState() lines 19/20/34/38: each early
-    //   return guards a condition where, if bypassed, every field read via
-    //   `$data[...] ?? default` on a non-array/undefined `$data` gracefully
-    //   degrades to the exact same default MaintenanceState via PHP's `??`
+    // - StateJson::decode() lines 44/48 (formerly FileMaintenanceProvider, moved
+    //   unchanged): each early return guards a condition where, if bypassed, every
+    //   field read via `$data[...] ?? default` on a non-array/undefined `$data`
+    //   gracefully degrades to the exact same default MaintenanceState via PHP's `??`
     //   operator — verified by tracing every non-array json_decode() result
     //   type (string/int/float/bool/null) through the rest of the method.
+    // - StateJson::decode() line 42 (json_decode depth 512 +/- 1): no fixture
+    //   nests deeper than a handful of levels, so 511/513 behave identically.
+    // - StateJson::encode() line 32 (BitwiseOr on JSON_THROW_ON_ERROR, and
+    //   `: 0` -> `: 1` when not pretty): a MaintenanceState contains only
+    //   bools, ints, IP strings and hex hashes — no value can ever contain a
+    //   `/` or a unicode char, so removing JSON_UNESCAPED_SLASHES or forcing
+    //   JSON_PRETTY_PRINT never changes the encoded document these tests see.
+    // - StateJson::encode() JSON_THROW_ON_ERROR removal: encoding an array of
+    //   scalars cannot fail, the catch is unreachable by construction.
     "minMsi": 92,
     "mutators": {
         "@default": true,
