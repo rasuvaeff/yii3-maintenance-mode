@@ -19,7 +19,7 @@ proxies, атомарное переключение через файл и ка
 
 ## Требования
 
-- PHP 8.3-8.5
+- PHP 8.3-8.6
 - ext-filter
 - PSR-7 HTTP messages и PSR-17 response factory
 - PSR-15 middleware и request handler

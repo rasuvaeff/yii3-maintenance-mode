@@ -20,6 +20,7 @@ jobs:
 
     outputs:
       run: ${{ steps.filter.outputs.run }}
+      mutation: ${{ steps.filter.outputs.mutation }}
 
     steps:
       - name: Checkout
@@ -38,7 +39,11 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ]; then
             BASE="$BASE_SHA"
           elif [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            # First push to a new branch: there is no base to diff against, so
+            # every filter says yes. Both outputs must be set here — an unset
+            # one reads as false downstream and silently skips its job.
             echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "mutation=true" >> "$GITHUB_OUTPUT"
             exit 0
           else
             BASE="$BEFORE_SHA"
@@ -53,6 +58,20 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
+          # Mutation is by far the most expensive job, so it gets a narrower
+          # filter than the rest: only what can change which mutants exist or
+          # which tests kill them. Style and static-analysis configs, examples
+          # and this workflow cannot. Explicit trade: editing the mutation STEP
+          # here no longer re-runs it — a break surfaces on the next source
+          # change or a manual re-run, which beats paying the full mutation run
+          # on every docs and CI edit.
+          if git diff --quiet "$BASE" "$GITHUB_SHA" -- \
+            src tests composer.json testo.php infection.json5; then
+            echo "mutation=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "mutation=true" >> "$GITHUB_OUTPUT"
+          fi
+
   # Not gated on 'changes' like the other jobs below: when a matrix job's own
   # `if` is false, GitHub Actions skips it as ONE unit and posts a single
   # check run named literally "PHP ${{ matrix.php }}" (the unexpanded
@@ -63,7 +82,6 @@ jobs:
   build:
     name: PHP ${{ matrix.php }}
     runs-on: ubuntu-latest
-    continue-on-error: ${{ matrix.experimental }}
 
     strategy:
       fail-fast: false
@@ -72,17 +90,7 @@ jobs:
           - '8.3'
           - '8.4'
           - '8.5'
-        experimental: [false]
-        include:
-          # PHP 8.6 is not released yet: the job runs on the RC, is not a
-          # required check and cannot fail the workflow. composer.json still
-          # says "8.3 - 8.5", hence --ignore-platform-req=php+ below. It runs
-          # the tests only: php-cs-fixer refuses 8.6 and psalm crashes on the
-          # RC — style and static analysis are covered by 8.3–8.5. After GA:
-          # drop `experimental`, widen "php" to "8.3 - 8.6", run the full
-          # build and add "PHP 8.6" to templates/branch-protection.json.
-          - php: '8.6'
-            experimental: true
+          - '8.6'
 
     steps:
       - name: Checkout
@@ -105,15 +113,35 @@ jobs:
           key: composer-${{ runner.os }}-${{ hashFiles('**/composer.json') }}
           restore-keys: composer-${{ runner.os }}-
 
+      # roave/backward-compatibility-check and maglnet/composer-require-checker
+      # pin "php": "~8.4.0 || ~8.5.0", so on 8.6 they are dropped instead of
+      # installing everything with --ignore-platform-req (which would also hide
+      # a real runtime dependency that refuses 8.6). Neither is needed here:
+      # the BC check has its own job, require-checker runs on 8.3-8.5. Remove
+      # this step once both allow 8.6. See docs/php-8.6-rollout-status.md.
+      - name: Drop dev tools without PHP 8.6 support
+        if: ${{ matrix.php == '8.6' }}
+        run: >-
+          composer remove --dev --no-update --no-interaction
+          roave/backward-compatibility-check maglnet/composer-require-checker
+
       - name: Install dependencies
-        env:
-          PLATFORM_FLAGS: ${{ matrix.experimental && '--ignore-platform-req=php+' || '' }}
-        run: composer install --no-interaction --no-progress --prefer-dist $PLATFORM_FLAGS
+        run: composer install --no-interaction --no-progress --prefer-dist
 
       - name: Build
-        env:
-          BUILD_SCRIPT: ${{ matrix.experimental && 'test' || 'build' }}
-        run: composer "$BUILD_SCRIPT"
+        if: ${{ matrix.php != '8.6' }}
+        run: composer build
+
+      # `composer build` minus cs (php-cs-fixer refuses 8.6 syntax) and minus
+      # require-checker (dropped above). Style and require-checker are covered
+      # by the 8.3-8.5 jobs. Switch to `composer build` once both support 8.6.
+      - name: Build (PHP 8.6)
+        if: ${{ matrix.php == '8.6' }}
+        run: |
+          composer validate --strict
+          composer normalize --dry-run
+          composer psalm
+          composer test
 
   prefer-lowest:
     name: Prefer lowest
@@ -151,7 +179,7 @@ jobs:
   coverage:
     name: Coverage & Mutation
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.run == 'true') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.mutation == 'true') }}
     runs-on: ubuntu-latest
 
     services:
@@ -218,7 +246,9 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
-          php-version: '8.4'
+          # roave compares the two revisions' sources statically, so one PHP
+          # version is enough; 8.5 is the newest it installs on (~8.4 || ~8.5).
+          php-version: '8.5'
           coverage: none
           extensions: json, filter, dom, mbstring, bcmath, intl
           tools: composer:v2
