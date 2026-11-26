@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 — 2026-11-26
 
 - Enh #29: Add PHP 8.6 support: `"php": "8.3 - 8.6"`, a regular (non-experimental) PHP 8.6 job in the CI matrix, and the backward-compatibility job moved to PHP 8.5. Unlocked by `yiisoft/error-handler` 4.3.3, which lifted its PHP ceiling to 8.6.
 
