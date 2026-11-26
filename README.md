@@ -19,7 +19,7 @@ responses.
 
 ## Requirements
 
-- PHP 8.3-8.5
+- PHP 8.3-8.6
 - ext-filter
 - PSR-7 HTTP messages and PSR-17 response factory
 - PSR-15 middleware and request handler
